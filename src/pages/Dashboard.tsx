@@ -164,11 +164,11 @@ const Dashboard = () => {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <h1 className="text-3xl font-bold text-gray-900">My Projects</h1>
+            <h1 className="text-3xl font-bold text-gray-900">My Deployments</h1>
             <div className="flex gap-4">
-              <Button onClick={() => setIsFormOpen(true)}>
+              <Button onClick={() => setIsFormOpen(true)} className="bg-orange-600 hover:bg-orange-700">
                 <Plus className="h-4 w-4 mr-2" />
-                New Project
+                New Deployment
               </Button>
               <Button variant="outline" onClick={handleSignOut}>
                 <LogOut className="h-4 w-4 mr-2" />
@@ -183,14 +183,14 @@ const Dashboard = () => {
         {projects.length === 0 ? (
           <div className="text-center py-12">
             <h2 className="text-xl font-semibold text-gray-600 mb-4">
-              No projects yet
+              No deployments yet
             </h2>
             <p className="text-gray-500 mb-6">
-              Create your first project to get started
+              Connect your first GitHub repository to get started
             </p>
-            <Button onClick={() => setIsFormOpen(true)}>
+            <Button onClick={() => setIsFormOpen(true)} className="bg-orange-600 hover:bg-orange-700">
               <Plus className="h-4 w-4 mr-2" />
-              Create Project
+              Create Deployment
             </Button>
           </div>
         ) : (
