@@ -27,11 +27,11 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Don't redirect while auth is still loading
+    // Only redirect if auth is fully loaded AND user is null
     if (authLoading) return;
     
     if (!user) {
-      console.log('No user found, redirecting to auth');
+      console.log('No user found after auth loaded, redirecting to auth');
       navigate('/auth');
       return;
     }
@@ -156,7 +156,7 @@ const Dashboard = () => {
     navigate('/auth');
   };
 
-  // Show loading while auth is being determined
+  // Show loading while auth is being determined - this prevents premature redirects
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
