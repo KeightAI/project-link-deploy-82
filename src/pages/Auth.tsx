@@ -29,6 +29,9 @@ const Auth = () => {
   const signInWithGitHub = async () => {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'github',
+    options: {
+      redirectTo: 'https://project-link-deploy.lovable.app/dashboard' // TODO: change URL to env var
+    }
   })
   if (error) console.error('Error logging in:', error.message)
 }
