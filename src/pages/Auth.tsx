@@ -33,8 +33,6 @@ const Auth = () => {
   if (error) console.error('Error logging in:', error.message)
 }
 
-    const [session, setSession] = useState(null)
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
