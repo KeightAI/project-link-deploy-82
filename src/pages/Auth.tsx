@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
 const Auth = () => {
@@ -16,6 +15,7 @@ const Auth = () => {
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [session, setSession] = useState(null)
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -25,6 +25,27 @@ const Auth = () => {
       navigate('/');
     }
   }, [user, navigate]);
+
+  const signInWithGitHub = async () => {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'github',
+  })
+  if (error) console.error('Error logging in:', error.message)
+}
+
+    const [session, setSession] = useState(null)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+    })
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
+    return () => listener.subscription.unsubscribe()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +102,7 @@ const Auth = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <button onClick={signInWithGitHub}>Login with GitHub</button>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label htmlFor="email">Email</Label>
