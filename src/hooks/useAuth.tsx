@@ -20,41 +20,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    // Get initial session first
-    const getInitialSession = async () => {
+    // Initialize auth state
+    const initializeAuth = async () => {
       try {
+        // First, get the current session
         const { data: { session }, error } = await supabase.auth.getSession();
+        
         if (error) {
-          console.error('Error getting session:', error);
+          console.error('Error getting initial session:', error);
         } else {
-          console.log('Initial session:', session?.user?.email);
-          if (mounted) {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
-          }
+          console.log('Initial session loaded:', session?.user?.email || 'no user');
+        }
+        
+        if (mounted) {
+          setSession(session);
+          setUser(session?.user ?? null);
+          setLoading(false);
         }
       } catch (error) {
-        console.error('Error in getInitialSession:', error);
+        console.error('Error initializing auth:', error);
         if (mounted) {
           setLoading(false);
         }
       }
     };
 
-    // Set up auth state listener
+    // Set up the auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state change:', event, session?.user?.email);
+      (event, session) => {
+        console.log('Auth state change:', event, session?.user?.email || 'no user');
+        
         if (mounted) {
           setSession(session);
           setUser(session?.user ?? null);
-          setLoading(false);
+          
+          // Only set loading to false after we've processed the auth change
+          if (event !== 'INITIAL_SESSION') {
+            setLoading(false);
+          }
         }
       }
     );
 
-    getInitialSession();
+    // Initialize auth state
+    initializeAuth();
 
     return () => {
       mounted = false;

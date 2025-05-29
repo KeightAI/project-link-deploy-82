@@ -27,20 +27,22 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Wait for auth to load completely
+    console.log('Dashboard useEffect - authLoading:', authLoading, 'user:', user?.email || 'no user');
+    
+    // Don't do anything while auth is still loading
     if (authLoading) {
-      console.log('Auth still loading...');
       return;
     }
     
-    // Only redirect if auth is fully loaded AND user is null
+    // If auth is done loading and there's no user, redirect to auth
     if (!user) {
-      console.log('No user found after auth loaded, redirecting to auth');
+      console.log('No authenticated user, redirecting to auth');
       navigate('/auth');
       return;
     }
     
-    console.log('User authenticated, fetching projects');
+    // User is authenticated, fetch projects
+    console.log('User is authenticated, fetching projects');
     fetchProjects();
   }, [user, authLoading, navigate]);
 
@@ -160,11 +162,20 @@ const Dashboard = () => {
     navigate('/auth');
   };
 
-  // Show loading while auth is being determined - this prevents premature redirects
+  // Show loading while auth is being determined
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  // If user is not authenticated, show loading (redirect will happen in useEffect)
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Redirecting...</div>
       </div>
     );
   }
