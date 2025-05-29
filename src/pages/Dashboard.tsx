@@ -27,9 +27,13 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Only redirect if auth is fully loaded AND user is null
-    if (authLoading) return;
+    // Wait for auth to load completely
+    if (authLoading) {
+      console.log('Auth still loading...');
+      return;
+    }
     
+    // Only redirect if auth is fully loaded AND user is null
     if (!user) {
       console.log('No user found after auth loaded, redirecting to auth');
       navigate('/auth');
