@@ -82,75 +82,87 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-blue-100">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl text-center">{isSignUp ? 'Sign Up' : 'Sign In'}</CardTitle>
-          <CardDescription className="text-center">
-            {isSignUp ? 'Create a new account to get started' : 'Sign in to your account to continue'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button 
-            onClick={handleGitHubAuth}
-            disabled={githubLoading}
-            className="w-full bg-gray-900 hover:bg-gray-800 text-white"
-            variant="default"
-          >
-            <Github className="mr-2 h-4 w-4" />
-            {githubLoading ? 'Connecting...' : 'Continue with GitHub'}
-          </Button>
-          
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
-                Or continue with email
-              </span>
-            </div>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="mt-1"
-              />
-            </div>
-            <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700" disabled={loading}>
-              {loading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
-            </Button>
-          </form>
-          
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-sm text-blue-600 hover:underline"
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-blue-100">
+      <header className="p-4">
+        <Button 
+          variant="ghost" 
+          onClick={() => navigate('/')}
+          className="text-gray-600 hover:text-gray-900"
+        >
+          ← Back to Keight AI
+        </Button>
+      </header>
+      
+      <div className="flex items-center justify-center min-h-[calc(100vh-5rem)]">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-2xl text-center">{isSignUp ? 'Sign Up' : 'Sign In'}</CardTitle>
+            <CardDescription className="text-center">
+              {isSignUp ? 'Create a new account to get started' : 'Sign in to your account to continue'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button 
+              onClick={handleGitHubAuth}
+              disabled={githubLoading}
+              className="w-full bg-gray-900 hover:bg-gray-800 text-white"
+              variant="default"
             >
-              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-            </button>
-          </div>
-        </CardContent>
-      </Card>
+              <Github className="mr-2 h-4 w-4" />
+              {githubLoading ? 'Connecting...' : 'Continue with GitHub'}
+            </Button>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Or continue with email
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="mt-1"
+                />
+              </div>
+              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700" disabled={loading}>
+                {loading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+              </Button>
+            </form>
+            
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => setIsSignUp(!isSignUp)}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
