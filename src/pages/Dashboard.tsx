@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,17 +22,23 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const { user, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Don't redirect while auth is still loading
+    if (authLoading) return;
+    
     if (!user) {
+      console.log('No user found, redirecting to auth');
       navigate('/auth');
       return;
     }
+    
+    console.log('User authenticated, fetching projects');
     fetchProjects();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const fetchProjects = async () => {
     try {
@@ -151,10 +156,20 @@ const Dashboard = () => {
     navigate('/auth');
   };
 
-  if (loading) {
+  // Show loading while auth is being determined
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show loading while projects are being fetched
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Loading projects...</div>
       </div>
     );
   }
