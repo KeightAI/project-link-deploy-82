@@ -28,6 +28,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    console.log(session)
     if (!user) {
       navigate('/auth');
       return;
