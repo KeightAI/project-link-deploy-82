@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,29 +23,17 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    console.log('Dashboard useEffect - authLoading:', authLoading, 'user:', user?.email || 'no user');
-    
-    // Don't do anything while auth is still loading
-    if (authLoading) {
-      return;
-    }
-    
-    // If auth is done loading and there's no user, redirect to auth
     if (!user) {
-      console.log('No authenticated user, redirecting to auth');
       navigate('/auth');
       return;
     }
-    
-    // User is authenticated, fetch projects
-    console.log('User is authenticated, fetching projects');
     fetchProjects();
-  }, [user, authLoading, navigate]);
+  }, [user, navigate]);
 
   const fetchProjects = async () => {
     try {
@@ -162,29 +151,10 @@ const Dashboard = () => {
     navigate('/auth');
   };
 
-  // Show loading while auth is being determined
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
-      </div>
-    );
-  }
-
-  // If user is not authenticated, show loading (redirect will happen in useEffect)
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Redirecting...</div>
-      </div>
-    );
-  }
-
-  // Show loading while projects are being fetched
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading projects...</div>
+        <div className="text-lg">Loading...</div>
       </div>
     );
   }
@@ -194,16 +164,7 @@ const Dashboard = () => {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <div className="flex items-center gap-4">
-              <Button 
-                variant="ghost" 
-                onClick={() => navigate('/')}
-                className="text-gray-600 hover:text-gray-900"
-              >
-                ← Keight AI
-              </Button>
-              <h1 className="text-3xl font-bold text-gray-900">My Deployments</h1>
-            </div>
+            <h1 className="text-3xl font-bold text-gray-900">My Deployments</h1>
             <div className="flex gap-4">
               <Button onClick={() => setIsFormOpen(true)} className="bg-orange-600 hover:bg-orange-700">
                 <Plus className="h-4 w-4 mr-2" />
