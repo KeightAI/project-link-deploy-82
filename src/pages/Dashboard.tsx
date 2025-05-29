@@ -164,11 +164,11 @@ const Dashboard = () => {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <h1 className="text-3xl font-bold text-gray-900">My Deployments</h1>
+            <h1 className="text-3xl font-bold text-gray-900">My Projects</h1>
             <div className="flex gap-4">
               <Button onClick={() => setIsFormOpen(true)} className="bg-orange-600 hover:bg-orange-700">
                 <Plus className="h-4 w-4 mr-2" />
-                New Deployment
+                Add Project
               </Button>
               <Button variant="outline" onClick={handleSignOut}>
                 <LogOut className="h-4 w-4 mr-2" />
@@ -190,7 +190,7 @@ const Dashboard = () => {
             </p>
             <Button onClick={() => setIsFormOpen(true)} className="bg-orange-600 hover:bg-orange-700">
               <Plus className="h-4 w-4 mr-2" />
-              Create Deployment
+              Add Project
             </Button>
           </div>
         ) : (
