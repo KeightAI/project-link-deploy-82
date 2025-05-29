@@ -23,18 +23,17 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const { user, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    console.log(session)
-    if (!user) {
+    if (!authLoading && !user) {
       navigate('/auth');
-      return;
+    } else if (user) {
+      fetchProjects();
     }
-    fetchProjects();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const fetchProjects = async () => {
     try {

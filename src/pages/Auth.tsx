@@ -25,6 +25,7 @@ const Auth = () => {
       navigate('/');
     }
   }, [user, navigate]);
+  
 
   const signInWithGitHub = async () => {
   const { error } = await supabase.auth.signInWithOAuth({
@@ -81,6 +82,11 @@ const Auth = () => {
       setLoading(false);
     }
   };
+
+    supabase.auth.onAuthStateChange((event, session) => {
+    console.log('Auth event:', event);
+    console.log('Session:', session);
+  });
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
