@@ -32,8 +32,10 @@ export type Database = {
       }
       projects: {
         Row: {
+          branch_name: string | null
           created_at: string
           description: string | null
+          github_repo_id: string | null
           github_repo_url: string | null
           id: string
           is_deployed: boolean | null
@@ -42,8 +44,10 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          branch_name?: string | null
           created_at?: string
           description?: string | null
+          github_repo_id?: string | null
           github_repo_url?: string | null
           id?: string
           is_deployed?: boolean | null
@@ -52,8 +56,10 @@ export type Database = {
           user_id: string
         }
         Update: {
+          branch_name?: string | null
           created_at?: string
           description?: string | null
+          github_repo_id?: string | null
           github_repo_url?: string | null
           id?: string
           is_deployed?: boolean | null

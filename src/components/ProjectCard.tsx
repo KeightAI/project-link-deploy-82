@@ -2,13 +2,15 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, Github, Trash2, Edit } from 'lucide-react';
+import { ExternalLink, Github, Trash2, Edit, Lock, Unlock } from 'lucide-react';
 
 interface Project {
   id: string;
   name: string;
   description: string | null;
   github_repo_url: string | null;
+  github_repo_id: string | null;
+  branch_name: string | null;
   is_deployed: boolean | null;
   created_at: string;
 }
@@ -20,15 +22,52 @@ interface ProjectCardProps {
 }
 
 const ProjectCard = ({ project, onEdit, onDelete }: ProjectCardProps) => {
+  // Extract repo name from URL if available
+  const getRepoName = () => {
+    if (project.github_repo_url) {
+      const parts = project.github_repo_url.split('/');
+      return parts[parts.length - 1];
+    }
+    return project.name;
+  };
+
+  // Check if repo is private based on the URL pattern or repo data
+  const isPrivateRepo = () => {
+    // This is a simplified check - in a real implementation, 
+    // you might store this information in the database
+    return false; // Default to public for now
+  };
+
   return (
     <Card className="hover:shadow-lg transition-shadow">
       <CardHeader className="pb-3">
         <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="text-xl">{project.name}</CardTitle>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <Github className="h-5 w-5 text-gray-600" />
+              <CardTitle className="text-xl">{getRepoName()}</CardTitle>
+              {isPrivateRepo() ? (
+                <Badge variant="secondary" className="bg-red-100 text-red-800 flex items-center gap-1">
+                  <Lock className="h-3 w-3" />
+                  Private
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="bg-green-100 text-green-800 flex items-center gap-1">
+                  <Unlock className="h-3 w-3" />
+                  Public
+                </Badge>
+              )}
+            </div>
             <CardDescription className="mt-2">
               {project.description || 'No description provided'}
             </CardDescription>
+            {project.branch_name && (
+              <div className="mt-2">
+                <Badge variant="outline" className="text-xs">
+                  Branch: {project.branch_name}
+                </Badge>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="ghost" size="sm" onClick={() => onEdit(project)}>
@@ -53,9 +92,10 @@ const ProjectCard = ({ project, onEdit, onDelete }: ProjectCardProps) => {
                 href={project.github_repo_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-gray-600 hover:text-gray-900"
+                className="text-gray-600 hover:text-gray-900 flex items-center gap-1"
               >
-                <Github className="h-4 w-4" />
+                <ExternalLink className="h-4 w-4" />
+                <span className="text-sm">View Repo</span>
               </a>
             )}
           </div>

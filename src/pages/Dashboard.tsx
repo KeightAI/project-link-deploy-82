@@ -14,6 +14,8 @@ interface Project {
   name: string;
   description: string | null;
   github_repo_url: string | null;
+  github_repo_id: string | null;
+  branch_name: string | null;
   is_deployed: boolean | null;
   created_at: string;
 }
@@ -59,6 +61,8 @@ const Dashboard = () => {
     name: string;
     description: string;
     github_repo_url: string;
+    github_repo_id: string;
+    branch_name: string;
     is_deployed: boolean;
   }) => {
     try {
@@ -88,6 +92,8 @@ const Dashboard = () => {
     name: string;
     description: string;
     github_repo_url: string;
+    github_repo_id: string;
+    branch_name: string;
     is_deployed: boolean;
   }) => {
     if (!editingProject) return;
