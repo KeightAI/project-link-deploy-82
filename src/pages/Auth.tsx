@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,14 +27,14 @@ const Auth = () => {
   
 
   const signInWithGitHub = async () => {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'github',
-    options: {
-      redirectTo: 'https://project-link-deploy.lovable.app/dashboard' // TODO: change URL to env var
-    }
-  })
-  if (error) console.error('Error logging in:', error.message)
-}
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        redirectTo: `${import.meta.env.VITE_APP_URL}/dashboard`
+      }
+    })
+    if (error) console.error('Error logging in:', error.message)
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -83,7 +82,7 @@ const Auth = () => {
     }
   };
 
-    supabase.auth.onAuthStateChange((event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
     console.log('Auth event:', event);
     console.log('Session:', session);
   });
