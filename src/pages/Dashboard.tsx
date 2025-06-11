@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,17 +24,25 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, loading: authLoading, signOut, hasValidGitHubToken } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!authLoading && !user) {
       navigate('/auth');
+    } else if (user && !hasValidGitHubToken()) {
+      // If user is authenticated but GitHub token is invalid, redirect to auth
+      toast({
+        title: "GitHub access expired",
+        description: "Please sign in with GitHub again to access your repositories",
+        variant: "destructive",
+      });
+      navigate('/auth');
     } else if (user) {
       fetchProjects();
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, hasValidGitHubToken]);
 
   const fetchProjects = async () => {
     try {
@@ -154,7 +161,21 @@ const Dashboard = () => {
 
   const handleSignOut = async () => {
     await signOut();
+    // Redirect after successful sign out
     navigate('/auth');
+  };
+
+  const handleAddProject = () => {
+    if (!hasValidGitHubToken()) {
+      toast({
+        title: "GitHub access required",
+        description: "Please sign in with GitHub to access your repositories",
+        variant: "destructive",
+      });
+      navigate('/auth');
+      return;
+    }
+    setIsFormOpen(true);
   };
 
   if (loading) {
@@ -172,7 +193,7 @@ const Dashboard = () => {
           <div className="flex justify-between items-center py-6">
             <h1 className="text-3xl font-bold text-gray-900">My Projects</h1>
             <div className="flex gap-4">
-              <Button onClick={() => setIsFormOpen(true)} className="bg-orange-600 hover:bg-orange-700">
+              <Button onClick={handleAddProject} className="bg-orange-600 hover:bg-orange-700">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Project
               </Button>
@@ -194,7 +215,7 @@ const Dashboard = () => {
             <p className="text-gray-500 mb-6">
               Connect your first GitHub repository to get started
             </p>
-            <Button onClick={() => setIsFormOpen(true)} className="bg-orange-600 hover:bg-orange-700">
+            <Button onClick={handleAddProject} className="bg-orange-600 hover:bg-orange-700">
               <Plus className="h-4 w-4 mr-2" />
               Add Project
             </Button>
