@@ -40,8 +40,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
-    // Redirect to auth page after sign out
-    window.location.href = '/auth';
+    // Don't redirect here - let the components handle it
   };
 
   return (

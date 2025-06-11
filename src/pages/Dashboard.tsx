@@ -154,6 +154,7 @@ const Dashboard = () => {
 
   const handleSignOut = async () => {
     await signOut();
+    // Redirect after successful sign out
     navigate('/auth');
   };
 
