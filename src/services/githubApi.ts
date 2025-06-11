@@ -29,6 +29,15 @@ export const fetchUserRepositories = async (): Promise<GitHubRepo[]> => {
     });
 
     if (!response.ok) {
+      // Check if it's a 401 (unauthorized) error indicating expired token
+      if (response.status === 401) {
+        console.log('GitHub token expired, signing out user');
+        // Force logout when token is expired
+        await supabase.auth.signOut();
+        // Reload the page to trigger a clean auth state
+        window.location.reload();
+        throw new Error('GitHub token expired. Please sign in again.');
+      }
       throw new Error('Failed to fetch repositories');
     }
 

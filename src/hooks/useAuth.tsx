@@ -27,9 +27,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     getSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      console.log('Auth event:', _event);
+      console.log('Session:', session);
+      
       setSession(session);
       setUser(session?.user ?? null);
+      
+      // If user is signed out, ensure we clear everything and redirect
+      if (_event === 'SIGNED_OUT' || !session) {
+        setSession(null);
+        setUser(null);
+        // Only redirect if we're not already on the auth page
+        if (window.location.pathname !== '/auth' && window.location.pathname !== '/') {
+          window.location.href = '/auth';
+        }
+      }
     });
 
     return () => listener.subscription.unsubscribe();
@@ -37,8 +50,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    setSession(null);
-    setUser(null);
+    // The onAuthStateChange listener will handle the redirect
   };
 
   return (
