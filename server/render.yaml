@@ -1,0 +1,19 @@
+
+services:
+  - type: web
+    name: keight-deployment-server
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: WORKSPACE_DIR
+        value: /tmp/deployments
+    disk:
+      name: deployment-storage
+      mountPath: /tmp/deployments
+      sizeGB: 10
