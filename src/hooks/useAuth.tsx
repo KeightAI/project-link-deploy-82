@@ -8,6 +8,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  hasValidGitHubToken: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,6 +37,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  const hasValidGitHubToken = () => {
+    return !!(session?.provider_token);
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
@@ -44,7 +49,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signOut, hasValidGitHubToken }}>
       {children}
     </AuthContext.Provider>
   );
