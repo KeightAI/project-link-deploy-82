@@ -29,9 +29,6 @@ export const fetchUserRepositories = async (): Promise<GitHubRepo[]> => {
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('GitHub token expired. Please sign in with GitHub again.');
-      }
       throw new Error('Failed to fetch repositories');
     }
 
