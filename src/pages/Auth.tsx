@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,39 +15,32 @@ const Auth = () => {
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [session, setSession] = useState(null)
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
 
   useEffect(() => {
     if (user) {
-      navigate('/');
+      navigate('/dashboard');
     }
   }, [user, navigate]);
-  
 
   const signInWithGitHub = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: `${import.meta.env.VITE_APP_URL}/dashboard`
+        redirectTo: `${window.location.origin}/dashboard`
       }
     })
-    if (error) console.error('Error logging in:', error.message)
+    if (error) {
+      console.error('Error logging in:', error.message);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   }
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-    })
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-    })
-
-    return () => listener.subscription.unsubscribe()
-  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +63,7 @@ const Auth = () => {
           password,
         });
         if (error) throw error;
-        navigate('/');
+        navigate('/dashboard');
       }
     } catch (error: any) {
       toast({
@@ -81,11 +75,6 @@ const Auth = () => {
       setLoading(false);
     }
   };
-
-  supabase.auth.onAuthStateChange((event, session) => {
-    console.log('Auth event:', event);
-    console.log('Session:', session);
-  });
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
