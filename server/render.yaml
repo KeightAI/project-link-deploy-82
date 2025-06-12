@@ -13,6 +13,8 @@ services:
         value: 10000
       - key: WORKSPACE_DIR
         value: /tmp/deployments
+      - key: DISABLE_BUN 
+        value: true
     disk:
       name: deployment-storage
       mountPath: /tmp/deployments
