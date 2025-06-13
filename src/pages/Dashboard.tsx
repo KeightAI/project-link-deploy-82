@@ -151,44 +151,48 @@ const Dashboard = () => {
     setIsFormOpen(true);
   };
 
+  const handleDeployProject = async (project: Project) => {
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/deploy-project`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          repoUrl: project.github_repo_url,
+          branch: project.branch_name || 'main',
+          stage: 'production'
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Deployment failed');
+    }
+
+    const data = await response.json();
+    toast({
+      title: "Success",
+      description: "Deployment started successfully",
+    });
+
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: error.message,
+      variant: "destructive",
+    });
+  }
+};
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/auth');
   };
 
-  const handleDeployProject = async (project: Project) => {
-    if (!project.github_repo_url) {
-      toast({
-        title: "Error",
-        description: "No GitHub repo URL found for this project.",
-        variant: "destructive",
-      });
-      return;
-    }
-    try {
-      const response = await fetch("/deploy/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoUrl: project.github_repo_url,
-          branch: project.branch_name || "main",
-          stage: "production"
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to start deployment");
-      toast({
-        title: "Deployment Started",
-        description: data.message || "Deployment initiated successfully.",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to start deployment.",
-        variant: "destructive",
-      });
-    }
-  };
 
   if (loading) {
     return (
