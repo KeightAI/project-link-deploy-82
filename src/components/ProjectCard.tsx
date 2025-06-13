@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,9 +18,10 @@ interface ProjectCardProps {
   project: Project;
   onEdit: (project: Project) => void;
   onDelete: (id: string) => void;
+  onDeploy: (project: Project) => void; // Add deploy handler
 }
 
-const ProjectCard = ({ project, onEdit, onDelete }: ProjectCardProps) => {
+const ProjectCard = ({ project, onEdit, onDelete, onDeploy }: ProjectCardProps) => {
   // Extract repo name from URL if available
   const getRepoName = () => {
     if (project.github_repo_url) {
@@ -39,49 +39,52 @@ const ProjectCard = ({ project, onEdit, onDelete }: ProjectCardProps) => {
   };
 
   return (
-    <Card className="hover:shadow-lg transition-shadow">
+    <Card className="hover:shadow-2xl transition-shadow min-h-[320px] min-w-[340px] p-4 text-lg">
       <CardHeader className="pb-3">
         <div className="flex justify-between items-start">
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <Github className="h-5 w-5 text-gray-600" />
-              <CardTitle className="text-xl">{getRepoName()}</CardTitle>
+            <div className="flex items-center gap-3 mb-3">
+              <Github className="h-6 w-6 text-gray-600" />
+              <CardTitle className="text-2xl">{getRepoName()}</CardTitle>
               {isPrivateRepo() ? (
                 <Badge variant="secondary" className="bg-red-100 text-red-800 flex items-center gap-1">
-                  <Lock className="h-3 w-3" />
+                  <Lock className="h-4 w-4" />
                   Private
                 </Badge>
               ) : (
                 <Badge variant="secondary" className="bg-green-100 text-green-800 flex items-center gap-1">
-                  <Unlock className="h-3 w-3" />
+                  <Unlock className="h-4 w-4" />
                   Public
                 </Badge>
               )}
             </div>
-            <CardDescription className="mt-2">
+            <CardDescription className="mt-3 text-base">
               {project.description || 'No description provided'}
             </CardDescription>
             {project.branch_name && (
-              <div className="mt-2">
-                <Badge variant="outline" className="text-xs">
+              <div className="mt-3">
+                <Badge variant="outline" className="text-base">
                   Branch: {project.branch_name}
                 </Badge>
               </div>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
             <Button variant="ghost" size="sm" onClick={() => onEdit(project)}>
-              <Edit className="h-4 w-4" />
+              <Edit className="h-5 w-5" />
             </Button>
             <Button variant="ghost" size="sm" onClick={() => onDelete(project.id)}>
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-5 w-5" />
+            </Button>
+            <Button variant="secondary" size="sm" className="mt-2 bg-blue-600 text-white hover:bg-blue-700" onClick={() => onDeploy(project)}>
+              Deploy
             </Button>
           </div>
         </div>
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between">
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             {project.is_deployed && (
               <Badge variant="secondary" className="bg-green-100 text-green-800">
                 Deployed
@@ -94,12 +97,12 @@ const ProjectCard = ({ project, onEdit, onDelete }: ProjectCardProps) => {
                 rel="noopener noreferrer"
                 className="text-gray-600 hover:text-gray-900 flex items-center gap-1"
               >
-                <ExternalLink className="h-4 w-4" />
-                <span className="text-sm">View Repo</span>
+                <ExternalLink className="h-5 w-5" />
+                <span className="text-base">View Repo</span>
               </a>
             )}
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-base text-gray-500">
             {new Date(project.created_at).toLocaleDateString()}
           </div>
         </div>
