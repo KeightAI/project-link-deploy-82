@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -172,7 +173,7 @@ const Dashboard = () => {
       
       toast({
         title: "Success",
-        description: "Deployment started successfully",
+        description: "Deployment started successfully! Your project is being processed.",
       });
 
     } catch (error: any) {
