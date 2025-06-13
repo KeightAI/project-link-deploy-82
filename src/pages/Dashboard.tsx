@@ -152,47 +152,43 @@ const Dashboard = () => {
   };
 
   const handleDeployProject = async (project: Project) => {
-  try {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/deploy-project`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+    try {
+      console.log('Starting deployment for project:', project.name);
+      
+      const { data, error } = await supabase.functions.invoke('deploy-project', {
+        body: {
           repoUrl: project.github_repo_url,
           branch: project.branch_name || 'main',
           stage: 'production'
-        })
+        }
+      });
+
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw error;
       }
-    );
 
-    if (!response.ok) {
-      throw new Error('Deployment failed');
+      console.log('Deployment response:', data);
+      
+      toast({
+        title: "Success",
+        description: "Deployment started successfully",
+      });
+
+    } catch (error: any) {
+      console.error('Deployment error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Deployment failed",
+        variant: "destructive",
+      });
     }
-
-    const data = await response.json();
-    toast({
-      title: "Success",
-      description: "Deployment started successfully",
-    });
-
-  } catch (error) {
-    toast({
-      title: "Error",
-      description: error.message,
-      variant: "destructive",
-    });
-  }
-};
+  };
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/auth');
   };
-
 
   if (loading) {
     return (
