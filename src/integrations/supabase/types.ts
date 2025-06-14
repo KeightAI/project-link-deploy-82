@@ -16,6 +16,7 @@ export type Database = {
           id: string
           logs: string | null
           repo_url: string
+          stage: string | null
           status: string | null
           updated_at: string | null
           user_id: string | null
@@ -26,6 +27,7 @@ export type Database = {
           id?: string
           logs?: string | null
           repo_url: string
+          stage?: string | null
           status?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -36,6 +38,7 @@ export type Database = {
           id?: string
           logs?: string | null
           repo_url?: string
+          stage?: string | null
           status?: string | null
           updated_at?: string | null
           user_id?: string | null
