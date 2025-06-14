@@ -2,7 +2,7 @@
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.unstable" />
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.31.0';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.9';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,11 +32,21 @@ serve(async (req) => {
       });
     }
 
+    const authorization = req.headers.get('Authorization');
+
+    if (!authorization) {
+      console.error('Authorization header is missing.');
+      return new Response(JSON.stringify({ error: 'Authentication error: Missing authorization header.' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
+
     // Create a Supabase client with the user's auth token to get user data
     const userSupabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      { global: { headers: { Authorization: authorization } } }
     );
 
     const { data: { user }, error: userError } = await userSupabaseClient.auth.getUser();
