@@ -1,14 +1,17 @@
+
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.unstable" />
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.31.0';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   'Access-Control-Max-Age': '86400'
 };
-serve(async (req)=>{
+
+serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -28,30 +31,51 @@ serve(async (req)=>{
         }
       });
     }
-    // Get environment variables
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing required environment variables');
+
+    // Create a Supabase client with the user's auth token to get user data
+    const userSupabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+    );
+
+    const { data: { user }, error: userError } = await userSupabaseClient.auth.getUser();
+
+    if (userError || !user) {
+        console.error('User auth error:', userError?.message);
+        return new Response(JSON.stringify({ error: 'Authentication error: Could not get user.' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
     }
-    // Create Supabase client with service role key for admin access
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('Inserting deployment record...');
-    // Insert deployment record
+
+    // Create Supabase client with service role key for admin access to insert data
+    const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    console.log(`Inserting deployment record for user ${user.id}...`);
+    
+    // Insert deployment record with user_id
     const { data, error } = await supabase.from('deployments').insert([
       {
         repo_url: repoUrl,
         branch,
         stage,
+        user_id: user.id, // Associate the deployment with the user
         status: 'pending',
         created_at: new Date().toISOString()
       }
     ]).select().single();
+    
     if (error) {
       console.error('Database error:', error);
       throw error;
     }
+    
     console.log('Deployment record created:', data);
+    
     return new Response(JSON.stringify({
       deploymentId: data.id,
       status: 'pending',
@@ -78,4 +102,3 @@ serve(async (req)=>{
     });
   }
 });
-
