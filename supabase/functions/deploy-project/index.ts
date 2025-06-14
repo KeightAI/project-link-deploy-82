@@ -37,13 +37,39 @@ serve(async (req) => {
       );
     }
 
-    // Create Supabase client
+    const authHeader = req.headers.get('Authorization');
+
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authorization header is required' }), 
+        { 
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        }
+      );
+    }
+
+    // Create Supabase client with the user's auth token
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
     );
+    
+    const { data: { user } } = await supabase.auth.getUser();
 
-    console.log('Inserting deployment record...');
+    if (!user) {
+      return new Response(
+        JSON.stringify({ error: 'User not authenticated' }), 
+        { 
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        }
+      );
+    }
+
+
+    console.log(`Inserting deployment record for user ${user.id}...`);
 
     // Insert deployment record
     const { data, error } = await supabase
@@ -54,7 +80,8 @@ serve(async (req) => {
           branch,
           stage,
           status: 'pending',
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          user_id: user.id
         }
       ])
       .select()
@@ -89,3 +116,4 @@ serve(async (req) => {
     );
   }
 });
+
