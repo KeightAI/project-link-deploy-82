@@ -2,9 +2,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { DeploymentProcessor } from './deploymentProcessor';
 import * as http from 'http';
-import dotenv from 'dotenv';
+import { config } from 'dotenv';
 
-dotenv.config();
+config();
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
