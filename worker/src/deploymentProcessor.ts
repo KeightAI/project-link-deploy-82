@@ -1,4 +1,3 @@
-
 import { SupabaseClient } from '@supabase/supabase-js';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
@@ -101,7 +100,12 @@ export class DeploymentProcessor {
 
       sstProcess.stderr?.on('data', (data) => {
         const output = data.toString().trim();
-        if (output && !output.includes('npm WARN')) {
+        // Filter out npm warnings and deprecation notices
+        if (output && 
+            !output.includes('npm WARN') && 
+            !output.includes('npm warn') &&
+            !output.includes('deprecated') &&
+            !output.toLowerCase().includes('querystring')) {
           this.addLog(deploymentId, `[SST ERROR] ${output}`);
         }
       });
