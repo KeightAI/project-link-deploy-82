@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,9 +20,16 @@ const Auth = () => {
   const { toast } = useToast();
   const { user } = useAuth();
 
+  // Only redirect to dashboard if user is authenticated and we're not handling a session expiration
   useEffect(() => {
     if (user) {
-      navigate('/');
+      // Check if we came here due to a GitHub token expiration
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromExpiration = urlParams.get('expired');
+      
+      if (!fromExpiration) {
+        navigate('/dashboard');
+      }
     }
   }, [user, navigate]);
   
@@ -30,7 +38,7 @@ const Auth = () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: `${import.meta.env.VITE_APP_URL}/dashboard`
+        redirectTo: `${window.location.origin}/dashboard`
       }
     })
     if (error) console.error('Error logging in:', error.message)
@@ -69,7 +77,7 @@ const Auth = () => {
           password,
         });
         if (error) throw error;
-        navigate('/auth');
+        navigate('/dashboard');
       }
     } catch (error: any) {
       toast({

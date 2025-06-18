@@ -16,7 +16,7 @@ const handleSessionExpired = async () => {
   console.log('GitHub session expired, logging out user');
   try {
     await supabase.auth.signOut();
-    // Force immediate redirect
+    // Only redirect to auth page, don't redirect twice
     window.location.href = '/auth';
   } catch (error) {
     console.error('Error during sign out:', error);
