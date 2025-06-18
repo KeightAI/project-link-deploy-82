@@ -34,10 +34,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Handle session expiration or logout
       if (event === 'SIGNED_OUT' || !session) {
+        console.log('User signed out, redirecting to main page');
+        // Clear any cached data
+        setUser(null);
+        setSession(null);
         // Redirect to main page when logged out
-        if (window.location.pathname !== '/') {
-          window.location.href = '/';
-        }
+        setTimeout(() => {
+          if (window.location.pathname !== '/') {
+            window.location.href = '/';
+          }
+        }, 100);
       }
 
       // Check if GitHub token is still valid when session exists
