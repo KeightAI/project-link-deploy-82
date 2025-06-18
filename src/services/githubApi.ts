@@ -12,6 +12,12 @@ export interface GitHubRepo {
   clone_url: string;
 }
 
+const handleSessionExpired = async () => {
+  console.log('GitHub session expired, logging out user');
+  await supabase.auth.signOut();
+  window.location.href = '/';
+};
+
 export const fetchUserRepositories = async (): Promise<GitHubRepo[]> => {
   try {
     // Get the current session to access the GitHub token
@@ -27,6 +33,13 @@ export const fetchUserRepositories = async (): Promise<GitHubRepo[]> => {
         'Accept': 'application/vnd.github.v3+json',
       },
     });
+
+    // Check if the token is invalid/expired
+    if (response.status === 401) {
+      console.error('GitHub token expired or invalid');
+      await handleSessionExpired();
+      throw new Error('GitHub session expired. Please sign in again.');
+    }
 
     if (!response.ok) {
       throw new Error('Failed to fetch repositories');
