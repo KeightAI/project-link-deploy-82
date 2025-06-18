@@ -7,14 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { LogIn, Github, Cloud, Zap } from 'lucide-react';
 
 const Index = () => {
-  const { user, loading } = useAuth();
+  const { user, session, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user && !loading) {
+    // Only redirect to dashboard if we have both user AND session
+    if (user && session && !loading) {
       navigate('/dashboard');
     }
-  }, [user, loading, navigate]);
+  }, [user, session, loading, navigate]);
 
   if (loading) {
     return (
