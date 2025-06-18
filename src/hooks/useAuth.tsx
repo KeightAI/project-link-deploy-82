@@ -16,6 +16,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasRedirected, setHasRedirected] = useState(false);
 
   useEffect(() => {
     const getSession = async () => {
@@ -38,10 +39,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Clear any cached data
         setUser(null);
         setSession(null);
-        // Only redirect to auth page if we're on a protected route (dashboard)
-        if (window.location.pathname === '/dashboard') {
+        // Only redirect to auth page if we're on a protected route (dashboard) and haven't already redirected
+        if (window.location.pathname === '/dashboard' && !hasRedirected) {
+          setHasRedirected(true);
           window.location.href = '/auth';
         }
+      }
+
+      // Reset redirect flag when user signs in
+      if (event === 'SIGNED_IN' && session) {
+        setHasRedirected(false);
       }
 
       // Check if GitHub token is still valid when session exists
@@ -65,7 +72,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => listener.subscription.unsubscribe();
-  }, []);
+  }, [hasRedirected]);
 
   const signOut = async () => {
     await supabase.auth.signOut();

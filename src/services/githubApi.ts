@@ -16,12 +16,9 @@ const handleSessionExpired = async () => {
   console.log('GitHub session expired, logging out user');
   try {
     await supabase.auth.signOut();
-    // Only redirect to auth page, don't redirect twice
-    window.location.href = '/auth';
+    // Don't redirect here - let the auth state change handler do it
   } catch (error) {
     console.error('Error during sign out:', error);
-    // Force redirect even if sign out fails
-    window.location.href = '/auth';
   }
 };
 
@@ -31,7 +28,7 @@ export const fetchUserRepositories = async (): Promise<GitHubRepo[]> => {
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.provider_token) {
-      console.log('No GitHub token found, redirecting to sign in');
+      console.log('No GitHub token found, signing out');
       await handleSessionExpired();
       throw new Error('No GitHub token found. Please sign in with GitHub.');
     }
