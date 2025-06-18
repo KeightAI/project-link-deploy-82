@@ -69,7 +69,7 @@ const Auth = () => {
           password,
         });
         if (error) throw error;
-        navigate('/');
+        navigate('/auth');
       }
     } catch (error: any) {
       toast({

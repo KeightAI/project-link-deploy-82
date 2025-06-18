@@ -15,7 +15,7 @@ export interface GitHubRepo {
 const handleSessionExpired = async () => {
   console.log('GitHub session expired, logging out user');
   await supabase.auth.signOut();
-  window.location.href = '/';
+  window.location.href = '/auth';
 };
 
 export const fetchUserRepositories = async (): Promise<GitHubRepo[]> => {

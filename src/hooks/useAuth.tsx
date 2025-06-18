@@ -35,8 +35,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Handle session expiration or logout
       if (event === 'SIGNED_OUT' || !session) {
         // Redirect to main page when logged out
-        if (window.location.pathname !== '/') {
-          window.location.href = '/';
+        if (window.location.pathname !== '/auth') {
+          window.location.href = '/auth';
         }
       }
 
