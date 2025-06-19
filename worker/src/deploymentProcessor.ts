@@ -82,12 +82,14 @@ export class DeploymentProcessor {
     await this.addLog(deploymentId, `Stage: ${stage}`);
 
     return new Promise((resolve, reject) => {
-      const sstProcess = spawn('npx', ['sst', 'deploy', '--stage', stage], {
+      // Use the locally installed SST instead of npx
+      const sstProcess = spawn('sst', ['deploy', '--stage', stage], {
         cwd: projectDir,
         stdio: 'pipe',
         env: { 
           ...process.env,
-          NODE_ENV: 'production'
+          NODE_ENV: 'production',
+          PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin`
         }
       });
 

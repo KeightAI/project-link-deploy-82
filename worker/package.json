@@ -12,10 +12,12 @@
   },
   "keywords": ["deployment", "sst", "worker"],
   "author": "",
-  "license": "MIT",  "dependencies": {
+  "license": "MIT",
+  "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "simple-git": "^3.22.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "sst": "^3.17.6"
   },
   "devDependencies": {
     "@types/node": "^20.8.0",
