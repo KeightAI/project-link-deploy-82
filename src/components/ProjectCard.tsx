@@ -20,9 +20,10 @@ interface ProjectCardProps {
   onEdit: (project: Project) => void;
   onDelete: (id: string) => void;
   onDeploy: (project: Project) => void;
+  deploymentStatus?: string | null;
 }
 
-const ProjectCard = ({ project, onEdit, onDelete, onDeploy }: ProjectCardProps) => {
+const ProjectCard = ({ project, onEdit, onDelete, onDeploy, deploymentStatus }: ProjectCardProps) => {
   // Extract repo name from URL if available
   const getRepoName = () => {
     if (project.github_repo_url) {
@@ -37,6 +38,28 @@ const ProjectCard = ({ project, onEdit, onDelete, onDeploy }: ProjectCardProps) 
     // This is a simplified check - in a real implementation, 
     // you might store this information in the database
     return false; // Default to public for now
+  };
+
+  // Get deployment status badge
+  const getDeploymentStatusBadge = () => {
+    if (!deploymentStatus) return null;
+
+    const statusConfig = {
+      cloning: { color: 'bg-yellow-100 text-yellow-800', emoji: '⏳', label: 'Cloning' },
+      deploying: { color: 'bg-blue-100 text-blue-800', emoji: '🚀', label: 'Deploying' },
+      completed: { color: 'bg-green-100 text-green-800', emoji: '✅', label: 'Completed' },
+      failed: { color: 'bg-red-100 text-red-800', emoji: '❌', label: 'Failed' }
+    };
+
+    const config = statusConfig[deploymentStatus as keyof typeof statusConfig];
+    if (!config) return null;
+
+    return (
+      <Badge variant="secondary" className={`${config.color} flex items-center gap-1 text-xs`}>
+        <span>{config.emoji}</span>
+        {config.label}
+      </Badge>
+    );
   };
 
   return (
@@ -72,13 +95,14 @@ const ProjectCard = ({ project, onEdit, onDelete, onDeploy }: ProjectCardProps) 
           {project.description || 'No description provided'}
         </CardDescription>
         
-        {project.branch_name && (
-          <div className="mt-2">
+        <div className="flex flex-wrap gap-2 mt-2">
+          {project.branch_name && (
             <Badge variant="outline" className="text-xs">
               Branch: {project.branch_name}
             </Badge>
-          </div>
-        )}
+          )}
+          {getDeploymentStatusBadge()}
+        </div>
       </CardHeader>
       
       <CardContent className="pt-0 flex-1 flex flex-col justify-between">

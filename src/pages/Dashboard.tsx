@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,8 +19,16 @@ interface Project {
   created_at: string;
 }
 
+interface Deployment {
+  id: string;
+  repo_url: string;
+  status: string;
+  created_at: string;
+}
+
 const Dashboard = () => {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [deployments, setDeployments] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -46,6 +53,9 @@ const Dashboard = () => {
 
       if (error) throw error;
       setProjects(data || []);
+      
+      // Fetch deployment status for each project
+      await fetchDeploymentStatuses(data || []);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -54,6 +64,37 @@ const Dashboard = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDeploymentStatuses = async (projectList: Project[]) => {
+    try {
+      // Get the latest deployment for each project's repo URL
+      const repoUrls = projectList
+        .filter(p => p.github_repo_url)
+        .map(p => p.github_repo_url);
+
+      if (repoUrls.length === 0) return;
+
+      const { data: deploymentsData, error } = await supabase
+        .from('deployments')
+        .select('repo_url, status, created_at')
+        .in('repo_url', repoUrls)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Create a map of repo_url to latest deployment status
+      const statusMap: { [key: string]: string } = {};
+      deploymentsData?.forEach((deployment: Deployment) => {
+        if (!statusMap[deployment.repo_url]) {
+          statusMap[deployment.repo_url] = deployment.status;
+        }
+      });
+
+      setDeployments(statusMap);
+    } catch (error: any) {
+      console.error('Error fetching deployment statuses:', error);
     }
   };
 
@@ -176,6 +217,9 @@ const Dashboard = () => {
         description: "Deployment started successfully! Your project is being processed.",
       });
 
+      // Refresh deployment statuses after starting deployment
+      fetchDeploymentStatuses(projects);
+
     } catch (error: any) {
       console.error('Deployment error:', error);
       toast({
@@ -242,6 +286,7 @@ const Dashboard = () => {
                 onEdit={handleEdit}
                 onDelete={handleDeleteProject}
                 onDeploy={handleDeployProject}
+                deploymentStatus={project.github_repo_url ? deployments[project.github_repo_url] : null}
               />
             ))}
           </div>
