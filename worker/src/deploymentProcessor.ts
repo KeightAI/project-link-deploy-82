@@ -83,7 +83,7 @@ export class DeploymentProcessor {
 
     return new Promise((resolve, reject) => {
       // Use the locally installed SST instead of npx
-      const sstProcess = spawn('sst', ['deploy', '--stage', stage], {
+      const sstProcess = spawn('sst', ['deploy', '--stage', stage, "--print-logs"], {
         cwd: projectDir,
         stdio: 'pipe',
         env: { 
