@@ -225,7 +225,7 @@ export class DeploymentProcessor {
       setTimeout(() => {
         sstProcess.kill('SIGKILL');
         reject(new Error('Deployment timeout after 20 minutes'));
-      }, 20 * 60 * 1000);
+      }, 40 * 60 * 1000);
     });
   }
 
