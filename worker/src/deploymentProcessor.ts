@@ -44,11 +44,15 @@ export class DeploymentProcessor {
       // Step 2: Run pre-deployment checks
       await this.preDeploymentChecks(id);
       
-      // Step 3: Run SST deployment
+      // Step 3: Install dependencies
+      await this.updateDeploymentStatus(id, 'installing');
+      await this.installDependencies(id);
+      
+      // Step 4: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 4: Complete
+      // Step 5: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -126,6 +130,118 @@ export class DeploymentProcessor {
       
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ Pre-deployment check failed: ${error.message}`);
+    }
+  }
+
+  private async installDependencies(deploymentId: string): Promise<void> {
+    const projectDir = path.join(this.workspaceDir, deploymentId);
+    
+    await this.addLog(deploymentId, '📦 Installing dependencies...');
+
+    try {
+      // Check which package manager to use
+      const files = await fs.readdir(projectDir);
+      let packageManager = 'npm';
+      let installCommand = ['install'];
+
+      if (files.includes('bun.lockb')) {
+        packageManager = 'bun';
+        installCommand = ['install'];
+        await this.addLog(deploymentId, '🍞 Using Bun package manager');
+      } else if (files.includes('yarn.lock')) {
+        packageManager = 'yarn';
+        installCommand = ['install', '--frozen-lockfile'];
+        await this.addLog(deploymentId, '🧶 Using Yarn package manager');
+      } else if (files.includes('package-lock.json')) {
+        packageManager = 'npm';
+        installCommand = ['ci'];
+        await this.addLog(deploymentId, '📦 Using npm package manager');
+      } else {
+        await this.addLog(deploymentId, '📦 Using npm package manager (default)');
+      }
+
+      await this.addLog(deploymentId, `🔧 Running: ${packageManager} ${installCommand.join(' ')}`);
+
+      return new Promise((resolve, reject) => {
+        const installEnv = {
+          ...process.env,
+          NODE_ENV: 'production',
+          PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
+          BUN_INSTALL: '/home/worker/.bun',
+          BUN_CONFIG_NO_CLEAR_TERMINAL: 'true'
+        };
+
+        const installProcess = spawn(packageManager, installCommand, {
+          cwd: projectDir,
+          stdio: 'pipe',
+          env: installEnv
+        });
+
+        // Capture stdout
+        installProcess.stdout?.on('data', (data) => {
+          const output = data.toString();
+          if (output.trim()) {
+            output.split('\n').forEach((line: string) => {
+              if (line.trim()) {
+                this.addLog(deploymentId, `[${packageManager.toUpperCase()}] ${line.trim()}`);
+              }
+            });
+          }
+        });
+
+        // Capture stderr (but filter out common warnings)
+        installProcess.stderr?.on('data', (data) => {
+          const output = data.toString();
+          if (output.trim()) {
+            // Filter out common harmless warnings
+            const harmlessPatterns = [
+              /^npm WARN/,
+              /^npm warn/,
+              /deprecated/i,
+              /ERESOLVE/,
+              /overriding peer dependency/i
+            ];
+            
+            const isHarmless = harmlessPatterns.some(pattern => pattern.test(output));
+            
+            if (!isHarmless) {
+              output.split('\n').forEach((line: string) => {
+                if (line.trim()) {
+                  this.addLog(deploymentId, `[${packageManager.toUpperCase()} WARN] ${line.trim()}`);
+                }
+              });
+            }
+          }
+        });
+
+        installProcess.on('close', async (code) => {
+          await this.addLog(deploymentId, `[${packageManager.toUpperCase()}] Process exited with code: ${code}`);
+          
+          if (code === 0) {
+            await this.addLog(deploymentId, '✅ Dependencies installed successfully!');
+            resolve();
+          } else {
+            const error = `Dependency installation failed with exit code ${code}`;
+            await this.addLog(deploymentId, `❌ ${error}`);
+            reject(new Error(error));
+          }
+        });
+
+        installProcess.on('error', async (error) => {
+          await this.addLog(deploymentId, `❌ Install process error: ${error.message}`);
+          reject(error);
+        });
+
+        // Timeout for dependency installation (10 minutes)
+        setTimeout(() => {
+          installProcess.kill('SIGKILL');
+          reject(new Error('Dependency installation timeout after 10 minutes'));
+        }, 10 * 60 * 1000);
+      });
+
+    } catch (error: any) {
+      await this.addLog(deploymentId, `❌ Dependency installation failed: ${error.message}`);
+      throw error;
     }
   }
 
