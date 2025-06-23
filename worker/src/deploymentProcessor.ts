@@ -118,32 +118,10 @@ export class DeploymentProcessor {
         await this.addLog(deploymentId, '⚠️ No package.json found');
       }
       
-      // Check Bun availability
-      await this.addLog(deploymentId, '🔧 Checking Bun availability...');
-      try {
-        const { spawn } = await import('child_process');
-        const bunCheck = spawn('bun', ['--version'], { cwd: projectDir });
-        
-        bunCheck.on('close', async (code) => {
-          if (code === 0) {
-            await this.addLog(deploymentId, '✅ Bun is available');
-          } else {
-            await this.addLog(deploymentId, '⚠️ Bun check failed, but SST will try to install it');
-          }
-        });
-      } catch (error) {
-        await this.addLog(deploymentId, '⚠️ Could not check Bun availability');
-      }
-      
       // Log environment info
       await this.addLog(deploymentId, `🖥️ Working directory: ${projectDir}`);
       await this.addLog(deploymentId, `🖥️ Node version: ${process.version}`);
       await this.addLog(deploymentId, `🖥️ Platform: ${process.platform}`);
-      await this.addLog(deploymentId, `🖥️ Architecture: ${process.arch}`);
-      
-      // Check available memory
-      const memInfo = process.memoryUsage();
-      await this.addLog(deploymentId, `🖥️ Memory usage: ${Math.round(memInfo.heapUsed / 1024 / 1024)}MB used / ${Math.round(memInfo.heapTotal / 1024 / 1024)}MB total`);
       
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ Pre-deployment check failed: ${error.message}`);

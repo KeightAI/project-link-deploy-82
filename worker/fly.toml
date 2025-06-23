@@ -41,5 +41,5 @@ primary_region = "iad"
   max_machines_running = 1
 
 [vm]
-  memory = "2gb"
-  cpus = 2
+  memory = "1gb"
+  cpus = 1
