@@ -48,11 +48,14 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'installing');
       await this.installDependencies(id);
       
-      // Step 4: Run SST deployment
+      // Step 4: Verify SST installation and setup
+      await this.verifySSTSetup(id);
+      
+      // Step 5: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 5: Complete
+      // Step 6: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -245,6 +248,108 @@ export class DeploymentProcessor {
     }
   }
 
+  private async verifySSTSetup(deploymentId: string): Promise<void> {
+    const projectDir = path.join(this.workspaceDir, deploymentId);
+    
+    await this.addLog(deploymentId, '🔧 Verifying SST setup...');
+    
+    try {
+      // Check if SST is installed in node_modules
+      const sstPackagePath = path.join(projectDir, 'node_modules', 'sst', 'package.json');
+      const sstInstalled = await fs.access(sstPackagePath).then(() => true).catch(() => false);
+      
+      if (sstInstalled) {
+        const sstPackage = JSON.parse(await fs.readFile(sstPackagePath, 'utf-8'));
+        await this.addLog(deploymentId, `✅ SST installed: version ${sstPackage.version}`);
+      } else {
+        await this.addLog(deploymentId, '⚠️ SST not found in node_modules, attempting global installation...');
+        
+        // Try to install SST globally as a fallback
+        return new Promise((resolve, reject) => {
+          const installProcess = spawn('npm', ['install', '-g', 'sst@latest'], {
+            cwd: projectDir,
+            stdio: 'pipe'
+          });
+
+          installProcess.stdout?.on('data', (data) => {
+            const output = data.toString();
+            if (output.trim()) {
+              this.addLog(deploymentId, `[SST INSTALL] ${output.trim()}`);
+            }
+          });
+
+          installProcess.stderr?.on('data', (data) => {
+            const output = data.toString();
+            if (output.trim()) {
+              this.addLog(deploymentId, `[SST INSTALL WARN] ${output.trim()}`);
+            }
+          });
+
+          installProcess.on('close', async (code) => {
+            if (code === 0) {
+              await this.addLog(deploymentId, '✅ SST installed globally');
+              resolve();
+            } else {
+              await this.addLog(deploymentId, `❌ SST global installation failed with code ${code}`);
+              reject(new Error(`SST installation failed with exit code ${code}`));
+            }
+          });
+
+          installProcess.on('error', async (error) => {
+            await this.addLog(deploymentId, `❌ SST installation error: ${error.message}`);
+            reject(error);
+          });
+        });
+      }
+      
+      // Test SST command availability
+      await this.testSSTCommand(deploymentId);
+      
+    } catch (error: any) {
+      await this.addLog(deploymentId, `⚠️ SST setup verification failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  private async testSSTCommand(deploymentId: string): Promise<void> {
+    const projectDir = path.join(this.workspaceDir, deploymentId);
+    
+    return new Promise((resolve, reject) => {
+      const testProcess = spawn('sst', ['--version'], {
+        cwd: projectDir,
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`
+        }
+      });
+
+      let output = '';
+      testProcess.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      testProcess.stderr?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      testProcess.on('close', async (code) => {
+        if (code === 0) {
+          await this.addLog(deploymentId, `✅ SST command available: ${output.trim()}`);
+          resolve();
+        } else {
+          await this.addLog(deploymentId, `❌ SST command test failed: ${output.trim()}`);
+          reject(new Error(`SST command test failed with exit code ${code}`));
+        }
+      });
+
+      testProcess.on('error', async (error) => {
+        await this.addLog(deploymentId, `❌ SST command test error: ${error.message}`);
+        reject(error);
+      });
+    });
+  }
+
   private async runSSTDeploy(deploymentId: string, stage: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
@@ -272,7 +377,8 @@ export class DeploymentProcessor {
         PULUMI_SKIP_UPDATE_CHECK: 'true'
       };
 
-      const sstProcess = spawn('sst', ['deploy', '--stage', stage, '--print-logs', '--verbose'], {
+      // First try to run SST with verbose output and better error handling
+      const sstProcess = spawn('sst', ['deploy', '--stage', stage, '--verbose'], {
         cwd: projectDir,
         stdio: 'pipe',
         env: deploymentEnv
@@ -337,10 +443,10 @@ export class DeploymentProcessor {
         reject(error);
       });
 
-      // Reasonable timeout of 20 minutes for lightweight projects
+      // Reasonable timeout of 40 minutes for deployments
       setTimeout(() => {
         sstProcess.kill('SIGKILL');
-        reject(new Error('Deployment timeout after 20 minutes'));
+        reject(new Error('Deployment timeout after 40 minutes'));
       }, 40 * 60 * 1000);
     });
   }
