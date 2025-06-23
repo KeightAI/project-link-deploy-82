@@ -1,4 +1,3 @@
-
 import { SupabaseClient } from '@supabase/supabase-js';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
@@ -58,9 +57,9 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'failed');
       await this.addLog(id, `Deployment failed: ${error.message} ❌`);
       
-      // Try to capture SST logs and Pulumi error logs on failure
+      // Try to capture SST logs and Pulumi event logs on failure
       await this.captureSSTLogs(id);
-      await this.capturePulumiErrorLogs(id);
+      await this.capturePulumiEventLogs(id);
     } finally {
       // Cleanup
       await this.cleanup(id);
@@ -120,7 +119,10 @@ export class DeploymentProcessor {
         await this.addLog(deploymentId, '⚠️ No package.json found');
       }
       
+      // Log environment info
       await this.addLog(deploymentId, `🖥️ Working directory: ${projectDir}`);
+      await this.addLog(deploymentId, `🖥️ Node version: ${process.version}`);
+      await this.addLog(deploymentId, `🖥️ Platform: ${process.platform}`);
       
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ Pre-deployment check failed: ${error.message}`);
@@ -208,7 +210,7 @@ export class DeploymentProcessor {
           
           // Try to capture additional logs from SST and Pulumi
           await this.captureSSTLogs(deploymentId);
-          await this.capturePulumiErrorLogs(deploymentId);
+          await this.capturePulumiEventLogs(deploymentId);
           
           reject(new Error(error));
         }
@@ -219,11 +221,11 @@ export class DeploymentProcessor {
         reject(error);
       });
 
-      // Timeout of 20 minutes for lightweight projects
+      // Reasonable timeout of 20 minutes for lightweight projects
       setTimeout(() => {
         sstProcess.kill('SIGKILL');
         reject(new Error('Deployment timeout after 20 minutes'));
-      }, 20 * 60 * 1000);
+      }, 40 * 60 * 1000);
     });
   }
 
@@ -252,32 +254,27 @@ export class DeploymentProcessor {
       const logFiles = await fs.readdir(sstLogDir);
       await this.addLog(deploymentId, `📋 Found log files: ${logFiles.join(', ')}`);
       
-      // Read all log files to get comprehensive error information
-      for (const logFile of logFiles) {
-        if (logFile.endsWith('.log')) {
-          try {
-            const logPath = path.join(sstLogDir, logFile);
-            const logContent = await fs.readFile(logPath, 'utf-8');
-            
-            if (logContent.trim()) {
-              await this.addLog(deploymentId, `📋 === ${logFile.toUpperCase()} CONTENT START ===`);
-              
-              // Split log content into chunks to avoid overwhelming the logs
-              const logLines = logContent.split('\n');
-              const recentLines = logLines.slice(-100); // Get last 100 lines
-              
-              for (const line of recentLines) {
-                if (line.trim()) {
-                  await this.addLog(deploymentId, `[${logFile.toUpperCase()}] ${line.trim()}`);
-                }
-              }
-              
-              await this.addLog(deploymentId, `📋 === ${logFile.toUpperCase()} CONTENT END ===`);
-            }
-          } catch (error: any) {
-            await this.addLog(deploymentId, `⚠️ Failed to read ${logFile}: ${error.message}`);
+      // Read the main SST log file
+      const sstLogFile = path.join(sstLogDir, 'sst.log');
+      const sstLogExists = await fs.access(sstLogFile).then(() => true).catch(() => false);
+      
+      if (sstLogExists) {
+        const sstLogContent = await fs.readFile(sstLogFile, 'utf-8');
+        await this.addLog(deploymentId, '📋 === SST LOG CONTENT START ===');
+        
+        // Split log content into chunks to avoid overwhelming the logs
+        const logLines = sstLogContent.split('\n');
+        const recentLines = logLines.slice(-100); // Get last 100 lines
+        
+        for (const line of recentLines) {
+          if (line.trim()) {
+            await this.addLog(deploymentId, `[SST LOG] ${line.trim()}`);
           }
         }
+        
+        await this.addLog(deploymentId, '📋 === SST LOG CONTENT END ===');
+      } else {
+        await this.addLog(deploymentId, '⚠️ sst.log file not found');
       }
       
     } catch (error: any) {
@@ -285,92 +282,80 @@ export class DeploymentProcessor {
     }
   }
 
-  private async capturePulumiErrorLogs(deploymentId: string): Promise<void> {
+  private async capturePulumiEventLogs(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
-    const sstDir = path.join(projectDir, '.sst');
+    const pulumiDir = path.join(projectDir, '.sst', 'pulumi');
     
     try {
-      await this.addLog(deploymentId, '📋 Attempting to capture Pulumi error logs...');
+      await this.addLog(deploymentId, '📋 Attempting to capture Pulumi event logs...');
       
-      // Check if .sst directory exists
-      const sstDirExists = await fs.access(sstDir).then(() => true).catch(() => false);
-      if (!sstDirExists) {
-        await this.addLog(deploymentId, '⚠️ No .sst directory found');
+      // Check if .sst/pulumi directory exists
+      const pulumiDirExists = await fs.access(pulumiDir).then(() => true).catch(() => false);
+      if (!pulumiDirExists) {
+        await this.addLog(deploymentId, '⚠️ No .sst/pulumi directory found');
         return;
       }
       
-      // Recursively search for Pulumi-related files
-      await this.searchPulumiFiles(deploymentId, sstDir);
+      // Find the latest deployment directory (they're named with update IDs)
+      const pulumiDirs = await fs.readdir(pulumiDir);
+      const updateDirs = pulumiDirs.filter(dir => dir.length > 10); // Filter out non-update directories
       
-    } catch (error: any) {
-      await this.addLog(deploymentId, `⚠️ Failed to capture Pulumi error logs: ${error.message}`);
-    }
-  }
-
-  private async searchPulumiFiles(deploymentId: string, dirPath: string, depth: number = 0): Promise<void> {
-    if (depth > 3) return; // Prevent too deep recursion
-    
-    try {
-      const items = await fs.readdir(dirPath, { withFileTypes: true });
+      if (updateDirs.length === 0) {
+        await this.addLog(deploymentId, '⚠️ No Pulumi update directories found');
+        return;
+      }
       
-      for (const item of items) {
-        const fullPath = path.join(dirPath, item.name);
+      // Get the most recent update directory
+      const latestUpdateDir = updateDirs[updateDirs.length - 1];
+      const eventLogPath = path.join(pulumiDir, latestUpdateDir, 'eventlog.json');
+      
+      await this.addLog(deploymentId, `📋 Checking for eventlog: ${eventLogPath}`);
+      
+      const eventLogExists = await fs.access(eventLogPath).then(() => true).catch(() => false);
+      
+      if (eventLogExists) {
+        const eventLogContent = await fs.readFile(eventLogPath, 'utf-8');
+        await this.addLog(deploymentId, '📋 === PULUMI EVENT LOG START ===');
         
-        if (item.isDirectory()) {
-          // Recursively search subdirectories
-          await this.searchPulumiFiles(deploymentId, fullPath, depth + 1);
-        } else if (item.isFile()) {
-          // Check for relevant log files
-          if (item.name.includes('eventlog') || 
-              item.name.includes('error') || 
-              item.name.includes('pulumi') ||
-              item.name.endsWith('.err') ||
-              item.name.endsWith('.log')) {
-            
-            try {
-              const content = await fs.readFile(fullPath, 'utf-8');
-              if (content.trim()) {
-                await this.addLog(deploymentId, `📋 === ${item.name.toUpperCase()} CONTENT START ===`);
-                
-                // For JSON event logs, parse and filter important events
-                if (item.name.includes('eventlog') && item.name.endsWith('.json')) {
-                  const events = content.split('\n').filter(line => line.trim());
-                  
-                  for (const eventLine of events.slice(-50)) { // Last 50 events
-                    try {
-                      const event = JSON.parse(eventLine);
-                      if (event.diagEvent) {
-                        const severity = event.diagEvent.severity || 'info';
-                        const message = event.diagEvent.message || 'No message';
-                        await this.addLog(deploymentId, `[PULUMI ${severity.toUpperCase()}] ${message}`);
-                      } else if (event.resOpFailedEvent) {
-                        const result = event.resOpFailedEvent.result;
-                        await this.addLog(deploymentId, `[PULUMI ERROR] Resource failed: ${result?.message || 'Unknown error'}`);
-                      }
-                    } catch (parseError) {
-                      // Skip malformed JSON lines
-                    }
-                  }
-                } else {
-                  // For regular log files, show recent lines
-                  const lines = content.split('\n').slice(-50);
-                  for (const line of lines) {
-                    if (line.trim()) {
-                      await this.addLog(deploymentId, `[${item.name.toUpperCase()}] ${line.trim()}`);
-                    }
-                  }
-                }
-                
-                await this.addLog(deploymentId, `📋 === ${item.name.toUpperCase()} CONTENT END ===`);
-              }
-            } catch (readError: any) {
-              await this.addLog(deploymentId, `⚠️ Failed to read ${item.name}: ${readError.message}`);
+        // Parse and filter the event log to show only errors and important events
+        const events = eventLogContent.split('\n').filter(line => line.trim());
+        const importantEvents = events.filter(line => {
+          try {
+            const event = JSON.parse(line);
+            return event.diagEvent || event.resOpFailedEvent || event.engineEvent;
+          } catch {
+            return false;
+          }
+        });
+        
+        // Show last 50 important events
+        const recentEvents = importantEvents.slice(-50);
+        
+        for (const eventLine of recentEvents) {
+          try {
+            const event = JSON.parse(eventLine);
+            if (event.diagEvent) {
+              const severity = event.diagEvent.severity || 'info';
+              const message = event.diagEvent.message || 'No message';
+              await this.addLog(deploymentId, `[PULUMI ${severity.toUpperCase()}] ${message}`);
+            } else if (event.resOpFailedEvent) {
+              const result = event.resOpFailedEvent.result;
+              await this.addLog(deploymentId, `[PULUMI ERROR] Resource operation failed: ${result?.message || 'Unknown error'}`);
+            } else if (event.engineEvent) {
+              await this.addLog(deploymentId, `[PULUMI ENGINE] ${JSON.stringify(event.engineEvent)}`);
             }
+          } catch (parseError) {
+            // Skip malformed JSON lines
           }
         }
+        
+        await this.addLog(deploymentId, '📋 === PULUMI EVENT LOG END ===');
+      } else {
+        await this.addLog(deploymentId, '⚠️ eventlog.json file not found');
       }
+      
     } catch (error: any) {
-      await this.addLog(deploymentId, `⚠️ Failed to search directory ${dirPath}: ${error.message}`);
+      await this.addLog(deploymentId, `⚠️ Failed to capture Pulumi event logs: ${error.message}`);
     }
   }
 
