@@ -163,7 +163,7 @@ export class DeploymentProcessor {
         const output = data.toString();
         if (output.trim()) {
           // Split by lines and log each line separately for better readability
-          output.split('\n').forEach(line => {
+          output.split('\n').forEach((line: string) => {
             if (line.trim()) {
               this.addLog(deploymentId, `[SST] ${line.trim()}`);
             }
@@ -185,7 +185,7 @@ export class DeploymentProcessor {
           const isHarmless = harmlessPatterns.some(pattern => pattern.test(output));
           
           if (!isHarmless) {
-            output.split('\n').forEach(line => {
+            output.split('\n').forEach((line: string) => {
               if (line.trim()) {
                 this.addLog(deploymentId, `[SST STDERR] ${line.trim()}`);
               }
