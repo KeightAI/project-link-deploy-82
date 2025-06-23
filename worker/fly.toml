@@ -6,14 +6,16 @@ primary_region = "iad"
 
 [env]
   NODE_ENV = "production"
+  NODE_OPTIONS = "--dns-result-order=ipv4first"
+  BUN_CONFIG_NO_CLEAR_TERMINAL = "true"
 
 [[services]]
   internal_port = 8080
   protocol = "tcp"
 
   [services.concurrency]
-    hard_limit = 25
-    soft_limit = 20
+    hard_limit = 15
+    soft_limit = 10
 
   [[services.ports]]
     handlers = ["http"]
@@ -39,6 +41,5 @@ primary_region = "iad"
   max_machines_running = 1
 
 [vm]
-  memory = "1gb"
-  cpus = 1
-
+  memory = "2gb"
+  cpus = 2

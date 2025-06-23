@@ -118,10 +118,32 @@ export class DeploymentProcessor {
         await this.addLog(deploymentId, '⚠️ No package.json found');
       }
       
+      // Check Bun availability
+      await this.addLog(deploymentId, '🔧 Checking Bun availability...');
+      try {
+        const { spawn } = await import('child_process');
+        const bunCheck = spawn('bun', ['--version'], { cwd: projectDir });
+        
+        bunCheck.on('close', async (code) => {
+          if (code === 0) {
+            await this.addLog(deploymentId, '✅ Bun is available');
+          } else {
+            await this.addLog(deploymentId, '⚠️ Bun check failed, but SST will try to install it');
+          }
+        });
+      } catch (error) {
+        await this.addLog(deploymentId, '⚠️ Could not check Bun availability');
+      }
+      
       // Log environment info
       await this.addLog(deploymentId, `🖥️ Working directory: ${projectDir}`);
       await this.addLog(deploymentId, `🖥️ Node version: ${process.version}`);
       await this.addLog(deploymentId, `🖥️ Platform: ${process.platform}`);
+      await this.addLog(deploymentId, `🖥️ Architecture: ${process.arch}`);
+      
+      // Check available memory
+      const memInfo = process.memoryUsage();
+      await this.addLog(deploymentId, `🖥️ Memory usage: ${Math.round(memInfo.heapUsed / 1024 / 1024)}MB used / ${Math.round(memInfo.heapTotal / 1024 / 1024)}MB total`);
       
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ Pre-deployment check failed: ${error.message}`);
@@ -136,16 +158,26 @@ export class DeploymentProcessor {
     await this.addLog(deploymentId, `📂 Working directory: ${projectDir}`);
 
     return new Promise((resolve, reject) => {
-      // Use the locally installed SST with verbose logging
+      // Enhanced environment variables for better Bun compatibility
+      const deploymentEnv = { 
+        ...process.env,
+        NODE_ENV: 'production',
+        PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
+        SST_DEBUG: '1',
+        BUN_INSTALL: '/home/worker/.bun',
+        BUN_CONFIG_NO_CLEAR_TERMINAL: 'true',
+        BUN_CONFIG_SILENT: 'false',
+        BUN_CONFIG_NO_PROGRESS: 'false',
+        // Add DNS configuration for better network reliability
+        NODE_OPTIONS: '--dns-result-order=ipv4first',
+        // Increase Node.js memory limit
+        NODE_MAX_OLD_SPACE_SIZE: '2048'
+      };
+
       const sstProcess = spawn('sst', ['deploy', '--stage', stage, '--print-logs', '--verbose'], {
         cwd: projectDir,
         stdio: 'pipe',
-        env: { 
-          ...process.env,
-          NODE_ENV: 'production',
-          PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin`,
-          SST_DEBUG: '1' // Enable SST debug mode
-        }
+        env: deploymentEnv
       });
 
       // Capture ALL stdout without filtering
@@ -206,11 +238,11 @@ export class DeploymentProcessor {
         reject(error);
       });
 
-      // Set timeout to prevent hanging (increased to 45 minutes for complex deployments)
+      // Increased timeout to 60 minutes for complex deployments with Bun downloads
       setTimeout(() => {
         sstProcess.kill('SIGKILL');
-        reject(new Error('Deployment timeout after 45 minutes'));
-      }, 45 * 60 * 1000);
+        reject(new Error('Deployment timeout after 60 minutes'));
+      }, 60 * 60 * 1000);
     });
   }
 
