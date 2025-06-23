@@ -57,8 +57,9 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'failed');
       await this.addLog(id, `Deployment failed: ${error.message} ❌`);
       
-      // Try to capture SST logs on failure
+      // Try to capture SST logs and Pulumi event logs on failure
       await this.captureSSTLogs(id);
+      await this.capturePulumiEventLogs(id);
     } finally {
       // Cleanup
       await this.cleanup(id);
@@ -136,7 +137,7 @@ export class DeploymentProcessor {
     await this.addLog(deploymentId, `📂 Working directory: ${projectDir}`);
 
     return new Promise((resolve, reject) => {
-      // Enhanced environment variables for better Bun compatibility
+      // Enhanced environment variables for better compatibility
       const deploymentEnv = { 
         ...process.env,
         NODE_ENV: 'production',
@@ -149,7 +150,10 @@ export class DeploymentProcessor {
         // Add DNS configuration for better network reliability
         NODE_OPTIONS: '--dns-result-order=ipv4first',
         // Increase Node.js memory limit
-        NODE_MAX_OLD_SPACE_SIZE: '2048'
+        NODE_MAX_OLD_SPACE_SIZE: '2048',
+        // Add Pulumi specific environment variables for better logging
+        PULUMI_DEBUG_GRPC: '1',
+        PULUMI_SKIP_UPDATE_CHECK: 'true'
       };
 
       const sstProcess = spawn('sst', ['deploy', '--stage', stage, '--print-logs', '--verbose'], {
@@ -204,8 +208,9 @@ export class DeploymentProcessor {
           const error = `SST deployment failed with exit code ${code}`;
           await this.addLog(deploymentId, `❌ ${error}`);
           
-          // Try to capture additional logs from SST log files
+          // Try to capture additional logs from SST and Pulumi
           await this.captureSSTLogs(deploymentId);
+          await this.capturePulumiEventLogs(deploymentId);
           
           reject(new Error(error));
         }
@@ -216,11 +221,11 @@ export class DeploymentProcessor {
         reject(error);
       });
 
-      // Increased timeout to 60 minutes for complex deployments with Bun downloads
+      // Extended timeout to 90 minutes for complex deployments
       setTimeout(() => {
         sstProcess.kill('SIGKILL');
-        reject(new Error('Deployment timeout after 60 minutes'));
-      }, 60 * 60 * 1000);
+        reject(new Error('Deployment timeout after 90 minutes'));
+      }, 90 * 60 * 1000);
     });
   }
 
@@ -274,6 +279,83 @@ export class DeploymentProcessor {
       
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ Failed to capture SST logs: ${error.message}`);
+    }
+  }
+
+  private async capturePulumiEventLogs(deploymentId: string): Promise<void> {
+    const projectDir = path.join(this.workspaceDir, deploymentId);
+    const pulumiDir = path.join(projectDir, '.sst', 'pulumi');
+    
+    try {
+      await this.addLog(deploymentId, '📋 Attempting to capture Pulumi event logs...');
+      
+      // Check if .sst/pulumi directory exists
+      const pulumiDirExists = await fs.access(pulumiDir).then(() => true).catch(() => false);
+      if (!pulumiDirExists) {
+        await this.addLog(deploymentId, '⚠️ No .sst/pulumi directory found');
+        return;
+      }
+      
+      // Find the latest deployment directory (they're named with update IDs)
+      const pulumiDirs = await fs.readdir(pulumiDir);
+      const updateDirs = pulumiDirs.filter(dir => dir.length > 10); // Filter out non-update directories
+      
+      if (updateDirs.length === 0) {
+        await this.addLog(deploymentId, '⚠️ No Pulumi update directories found');
+        return;
+      }
+      
+      // Get the most recent update directory
+      const latestUpdateDir = updateDirs[updateDirs.length - 1];
+      const eventLogPath = path.join(pulumiDir, latestUpdateDir, 'eventlog.json');
+      
+      await this.addLog(deploymentId, `📋 Checking for eventlog: ${eventLogPath}`);
+      
+      const eventLogExists = await fs.access(eventLogPath).then(() => true).catch(() => false);
+      
+      if (eventLogExists) {
+        const eventLogContent = await fs.readFile(eventLogPath, 'utf-8');
+        await this.addLog(deploymentId, '📋 === PULUMI EVENT LOG START ===');
+        
+        // Parse and filter the event log to show only errors and important events
+        const events = eventLogContent.split('\n').filter(line => line.trim());
+        const importantEvents = events.filter(line => {
+          try {
+            const event = JSON.parse(line);
+            return event.diagEvent || event.resOpFailedEvent || event.engineEvent;
+          } catch {
+            return false;
+          }
+        });
+        
+        // Show last 50 important events
+        const recentEvents = importantEvents.slice(-50);
+        
+        for (const eventLine of recentEvents) {
+          try {
+            const event = JSON.parse(eventLine);
+            if (event.diagEvent) {
+              const severity = event.diagEvent.severity || 'info';
+              const message = event.diagEvent.message || 'No message';
+              await this.addLog(deploymentId, `[PULUMI ${severity.toUpperCase()}] ${message}`);
+            } else if (event.resOpFailedEvent) {
+              const result = event.resOpFailedEvent.result;
+              await this.addLog(deploymentId, `[PULUMI ERROR] Resource operation failed: ${result?.message || 'Unknown error'}`);
+            } else if (event.engineEvent) {
+              await this.addLog(deploymentId, `[PULUMI ENGINE] ${JSON.stringify(event.engineEvent)}`);
+            }
+          } catch (parseError) {
+            // Skip malformed JSON lines
+          }
+        }
+        
+        await this.addLog(deploymentId, '📋 === PULUMI EVENT LOG END ===');
+      } else {
+        await this.addLog(deploymentId, '⚠️ eventlog.json file not found');
+      }
+      
+    } catch (error: any) {
+      await this.addLog(deploymentId, `⚠️ Failed to capture Pulumi event logs: ${error.message}`);
     }
   }
 
