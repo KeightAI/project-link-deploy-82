@@ -221,11 +221,11 @@ export class DeploymentProcessor {
         reject(error);
       });
 
-      // Extended timeout to 90 minutes for complex deployments
+      // Reasonable timeout of 20 minutes for lightweight projects
       setTimeout(() => {
         sstProcess.kill('SIGKILL');
-        reject(new Error('Deployment timeout after 90 minutes'));
-      }, 90 * 60 * 1000);
+        reject(new Error('Deployment timeout after 20 minutes'));
+      }, 20 * 60 * 1000);
     });
   }
 
