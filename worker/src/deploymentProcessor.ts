@@ -48,17 +48,20 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'installing');
       await this.installDependencies(id);
       
-      // Step 4: Fix file permissions after dependency installation
+      // Step 4: Fix file permissions after dependency installation (enhanced)
       await this.fixFilePermissions(id);
       
-      // Step 5: Verify SST installation and setup (non-blocking)
+      // Step 5: Verify critical executables
+      await this.verifyCriticalExecutables(id);
+      
+      // Step 6: Verify SST installation and setup (non-blocking)
       await this.verifySSTSetup(id);
       
-      // Step 6: Run SST deployment
+      // Step 7: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 7: Complete
+      // Step 8: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -270,75 +273,51 @@ export class DeploymentProcessor {
       const binFiles = await fs.readdir(binDir);
       await this.addLog(deploymentId, `📋 Found ${binFiles.length} executable files in node_modules/.bin`);
       
-      // Fix permissions for all files in node_modules/.bin
-      return new Promise((resolve, reject) => {
-        const chmodProcess = spawn('chmod', ['+x', `${binDir}/*`], {
-          cwd: projectDir,
-          stdio: 'pipe',
-          shell: true
-        });
-
-        chmodProcess.stdout?.on('data', (data) => {
-          const output = data.toString();
-          if (output.trim()) {
-            this.addLog(deploymentId, `[CHMOD] ${output.trim()}`);
+      // Fix permissions for each file individually to ensure success
+      let successCount = 0;
+      let failureCount = 0;
+      
+      for (const file of binFiles) {
+        try {
+          const filePath = path.join(binDir, file);
+          await fs.chmod(filePath, 0o755);
+          successCount++;
+          
+          // Log important executables specifically
+          if (['react-router', 'sst', 'vite', 'tsc'].includes(file)) {
+            await this.addLog(deploymentId, `✅ Fixed permissions for ${file}`);
           }
-        });
-
-        chmodProcess.stderr?.on('data', (data) => {
-          const output = data.toString();
-          if (output.trim()) {
-            this.addLog(deploymentId, `[CHMOD WARN] ${output.trim()}`);
+        } catch (error: any) {
+          failureCount++;
+          if (['react-router', 'sst', 'vite', 'tsc'].includes(file)) {
+            await this.addLog(deploymentId, `❌ Failed to fix permissions for ${file}: ${error.message}`);
           }
-        });
-
-        chmodProcess.on('close', async (code) => {
-          if (code === 0) {
-            await this.addLog(deploymentId, '✅ File permissions fixed successfully!');
-            
-            // Verify specific tools are now executable
-            await this.verifyToolPermissions(deploymentId, ['react-router', 'sst', 'vite', 'tsc']);
-            
-            resolve();
-          } else {
-            await this.addLog(deploymentId, `⚠️ chmod exited with code ${code}, trying individual file approach...`);
-            
-            // Fallback: fix permissions for each file individually
-            try {
-              for (const file of binFiles) {
-                const filePath = path.join(binDir, file);
-                await fs.chmod(filePath, 0o755);
-              }
-              await this.addLog(deploymentId, '✅ File permissions fixed individually!');
-              resolve();
-            } catch (individualError: any) {
-              await this.addLog(deploymentId, `❌ Failed to fix individual file permissions: ${individualError.message}`);
-              reject(individualError);
-            }
-          }
-        });
-
-        chmodProcess.on('error', async (error) => {
-          await this.addLog(deploymentId, `❌ chmod process error: ${error.message}`);
-          reject(error);
-        });
-      });
+        }
+      }
+      
+      await this.addLog(deploymentId, `✅ Fixed permissions for ${successCount}/${binFiles.length} files`);
+      
+      if (failureCount > 0) {
+        await this.addLog(deploymentId, `⚠️ Failed to fix ${failureCount} files, but continuing...`);
+      }
       
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ File permission fix failed: ${error.message}`);
-      // Don't throw here, as this is not always critical
       await this.addLog(deploymentId, '⚠️ Continuing deployment despite permission fix failure...');
     }
   }
 
-  private async verifyToolPermissions(deploymentId: string, tools: string[]): Promise<void> {
+  private async verifyCriticalExecutables(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
+    const binDir = path.join(projectDir, 'node_modules', '.bin');
     
-    await this.addLog(deploymentId, '🔍 Verifying tool permissions...');
+    await this.addLog(deploymentId, '🔍 Verifying critical executable permissions...');
     
-    for (const tool of tools) {
+    const criticalTools = ['react-router', 'sst', 'vite', 'tsc'];
+    
+    for (const tool of criticalTools) {
       try {
-        const toolPath = path.join(projectDir, 'node_modules', '.bin', tool);
+        const toolPath = path.join(binDir, tool);
         const toolExists = await fs.access(toolPath).then(() => true).catch(() => false);
         
         if (toolExists) {
@@ -346,15 +325,23 @@ export class DeploymentProcessor {
           const isExecutable = !!(stats.mode & parseInt('111', 8));
           
           if (isExecutable) {
-            await this.addLog(deploymentId, `✅ ${tool}: executable`);
+            await this.addLog(deploymentId, `✅ ${tool}: executable and ready`);
           } else {
-            await this.addLog(deploymentId, `⚠️ ${tool}: not executable`);
+            await this.addLog(deploymentId, `❌ ${tool}: NOT executable - attempting fix...`);
+            
+            // Try to fix this specific tool
+            try {
+              await fs.chmod(toolPath, 0o755);
+              await this.addLog(deploymentId, `✅ ${tool}: permission fixed successfully`);
+            } catch (fixError: any) {
+              await this.addLog(deploymentId, `❌ ${tool}: permission fix failed - ${fixError.message}`);
+            }
           }
         } else {
-          await this.addLog(deploymentId, `⚠️ ${tool}: not found`);
+          await this.addLog(deploymentId, `⚠️ ${tool}: not found in node_modules/.bin`);
         }
       } catch (error: any) {
-        await this.addLog(deploymentId, `⚠️ ${tool}: permission check failed - ${error.message}`);
+        await this.addLog(deploymentId, `⚠️ ${tool}: verification failed - ${error.message}`);
       }
     }
   }
