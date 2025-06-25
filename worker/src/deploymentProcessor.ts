@@ -48,14 +48,17 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'installing');
       await this.installDependencies(id);
       
-      // Step 4: Verify SST installation and setup
+      // Step 4: Fix file permissions after dependency installation
+      await this.fixFilePermissions(id);
+      
+      // Step 5: Verify SST installation and setup
       await this.verifySSTSetup(id);
       
-      // Step 5: Run SST deployment
+      // Step 6: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 6: Complete
+      // Step 7: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -248,6 +251,114 @@ export class DeploymentProcessor {
     }
   }
 
+  private async fixFilePermissions(deploymentId: string): Promise<void> {
+    const projectDir = path.join(this.workspaceDir, deploymentId);
+    
+    await this.addLog(deploymentId, '🔧 Fixing file permissions...');
+    
+    try {
+      // Check if node_modules/.bin directory exists
+      const binDir = path.join(projectDir, 'node_modules', '.bin');
+      const binDirExists = await fs.access(binDir).then(() => true).catch(() => false);
+      
+      if (!binDirExists) {
+        await this.addLog(deploymentId, '⚠️ No node_modules/.bin directory found');
+        return;
+      }
+      
+      // List files in .bin directory
+      const binFiles = await fs.readdir(binDir);
+      await this.addLog(deploymentId, `📋 Found ${binFiles.length} executable files in node_modules/.bin`);
+      
+      // Fix permissions for all files in node_modules/.bin
+      return new Promise((resolve, reject) => {
+        const chmodProcess = spawn('chmod', ['+x', `${binDir}/*`], {
+          cwd: projectDir,
+          stdio: 'pipe',
+          shell: true
+        });
+
+        chmodProcess.stdout?.on('data', (data) => {
+          const output = data.toString();
+          if (output.trim()) {
+            this.addLog(deploymentId, `[CHMOD] ${output.trim()}`);
+          }
+        });
+
+        chmodProcess.stderr?.on('data', (data) => {
+          const output = data.toString();
+          if (output.trim()) {
+            this.addLog(deploymentId, `[CHMOD WARN] ${output.trim()}`);
+          }
+        });
+
+        chmodProcess.on('close', async (code) => {
+          if (code === 0) {
+            await this.addLog(deploymentId, '✅ File permissions fixed successfully!');
+            
+            // Verify specific tools are now executable
+            await this.verifyToolPermissions(deploymentId, ['react-router', 'sst', 'vite', 'tsc']);
+            
+            resolve();
+          } else {
+            await this.addLog(deploymentId, `⚠️ chmod exited with code ${code}, trying individual file approach...`);
+            
+            // Fallback: fix permissions for each file individually
+            try {
+              for (const file of binFiles) {
+                const filePath = path.join(binDir, file);
+                await fs.chmod(filePath, 0o755);
+              }
+              await this.addLog(deploymentId, '✅ File permissions fixed individually!');
+              resolve();
+            } catch (individualError: any) {
+              await this.addLog(deploymentId, `❌ Failed to fix individual file permissions: ${individualError.message}`);
+              reject(individualError);
+            }
+          }
+        });
+
+        chmodProcess.on('error', async (error) => {
+          await this.addLog(deploymentId, `❌ chmod process error: ${error.message}`);
+          reject(error);
+        });
+      });
+      
+    } catch (error: any) {
+      await this.addLog(deploymentId, `⚠️ File permission fix failed: ${error.message}`);
+      // Don't throw here, as this is not always critical
+      await this.addLog(deploymentId, '⚠️ Continuing deployment despite permission fix failure...');
+    }
+  }
+
+  private async verifyToolPermissions(deploymentId: string, tools: string[]): Promise<void> {
+    const projectDir = path.join(this.workspaceDir, deploymentId);
+    
+    await this.addLog(deploymentId, '🔍 Verifying tool permissions...');
+    
+    for (const tool of tools) {
+      try {
+        const toolPath = path.join(projectDir, 'node_modules', '.bin', tool);
+        const toolExists = await fs.access(toolPath).then(() => true).catch(() => false);
+        
+        if (toolExists) {
+          const stats = await fs.stat(toolPath);
+          const isExecutable = !!(stats.mode & parseInt('111', 8));
+          
+          if (isExecutable) {
+            await this.addLog(deploymentId, `✅ ${tool}: executable`);
+          } else {
+            await this.addLog(deploymentId, `⚠️ ${tool}: not executable`);
+          }
+        } else {
+          await this.addLog(deploymentId, `⚠️ ${tool}: not found`);
+        }
+      } catch (error: any) {
+        await this.addLog(deploymentId, `⚠️ ${tool}: permission check failed - ${error.message}`);
+      }
+    }
+  }
+
   private async verifySSTSetup(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
@@ -362,7 +473,7 @@ export class DeploymentProcessor {
       const deploymentEnv = { 
         ...process.env,
         NODE_ENV: 'production',
-        PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
+        PATH: `${projectDir}/node_modules/.bin:${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
         SST_DEBUG: '1',
         BUN_INSTALL: '/home/worker/.bun',
         BUN_CONFIG_NO_CLEAR_TERMINAL: 'true',
@@ -377,8 +488,8 @@ export class DeploymentProcessor {
         PULUMI_SKIP_UPDATE_CHECK: 'true'
       };
 
-      // First try to run SST with verbose output and better error handling
-      const sstProcess = spawn('sst', ['deploy', '--stage', stage, '--verbose'], {
+      // Use npx to handle permissions automatically
+      const sstProcess = spawn('npx', ['sst', 'deploy', '--stage', stage, '--verbose'], {
         cwd: projectDir,
         stdio: 'pipe',
         env: deploymentEnv
