@@ -426,7 +426,7 @@ export class DeploymentProcessor {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
     return new Promise((resolve, reject) => {
-      const testProcess = spawn('sst', ['--version'], {
+      const testProcess = spawn('sst', ['version'], {
         cwd: projectDir,
         stdio: 'pipe',
         env: {
