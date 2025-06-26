@@ -48,8 +48,8 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'installing');
       await this.installDependencies(id);
       
-      // Step 4: Fix file permissions comprehensively
-      await this.fixAllExecutablePermissions(id);
+      // Step 4: Fix executable permissions immediately after install
+      await this.fixExecutablePermissions(id);
       
       // Step 5: Install SST platform
       await this.updateDeploymentStatus(id, 'preparing');
@@ -252,11 +252,11 @@ export class DeploymentProcessor {
     }
   }
 
-  private async fixAllExecutablePermissions(deploymentId: string): Promise<void> {
+  private async fixExecutablePermissions(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     const binDir = path.join(projectDir, 'node_modules', '.bin');
     
-    await this.addLog(deploymentId, '🔧 Fixing all executable permissions...');
+    await this.addLog(deploymentId, '🔧 Fixing executable permissions...');
     
     try {
       // Check if node_modules/.bin directory exists
@@ -267,91 +267,116 @@ export class DeploymentProcessor {
         return;
       }
 
-      // Method 1: Use system find command to fix all permissions at once
-      await this.addLog(deploymentId, '🔧 Using system find command to fix permissions...');
+      // Method 1: Use chmod command to fix all files in .bin directory
+      await this.addLog(deploymentId, '🔧 Setting executable permissions on all .bin files...');
       
-      const findResult = await this.runSystemCommand(deploymentId, 'find', [
-        binDir,
-        '-type', 'f',
-        '-exec', 'chmod', '+x', '{}', ';'
-      ], projectDir);
+      const chmodResult = await this.runCommand(deploymentId, 'chmod', ['+x', `${binDir}/*`], projectDir);
       
-      if (findResult.success) {
-        await this.addLog(deploymentId, '✅ System find command completed successfully');
+      if (chmodResult.success) {
+        await this.addLog(deploymentId, '✅ chmod +x command completed successfully');
       } else {
-        await this.addLog(deploymentId, '⚠️ System find command failed, trying individual file approach...');
+        await this.addLog(deploymentId, '⚠️ chmod command failed, trying individual file approach...');
       }
 
-      // Method 2: Fix individual files, especially react-router
+      // Method 2: Fix individual files using Node.js fs.chmod
       const binFiles = await fs.readdir(binDir);
       await this.addLog(deploymentId, `📋 Found ${binFiles.length} files in .bin directory`);
       
-      const criticalExecutables = ['react-router', 'vite', 'tsc', 'sst'];
-      
-      // Fix critical executables first
-      for (const executable of criticalExecutables) {
-        if (binFiles.includes(executable)) {
-          const execPath = path.join(binDir, executable);
-          
-          try {
-            // Method A: Node.js fs.chmod
-            await fs.chmod(execPath, 0o755);
-            await this.addLog(deploymentId, `✅ Fixed permissions for ${executable} (fs.chmod)`);
-            
-            // Method B: System chmod as backup
-            const chmodResult = await this.runSystemCommand(deploymentId, 'chmod', ['+x', execPath], projectDir);
-            if (chmodResult.success) {
-              await this.addLog(deploymentId, `✅ Confirmed permissions for ${executable} (system chmod)`);
-            }
-            
-            // Verify the fix worked
-            const stats = await fs.stat(execPath);
-            const isExecutable = !!(stats.mode & parseInt('111', 8));
-            
-            if (isExecutable) {
-              await this.addLog(deploymentId, `✅ ${executable} is now executable (verified)`);
-            } else {
-              await this.addLog(deploymentId, `❌ ${executable} still not executable after fix attempts`);
-            }
-            
-          } catch (error: any) {
-            await this.addLog(deploymentId, `❌ Failed to fix ${executable}: ${error.message}`);
-          }
-        } else {
-          await this.addLog(deploymentId, `⚠️ ${executable} not found in node_modules/.bin`);
-        }
-      }
-
-      // Fix remaining files
-      const remainingFiles = binFiles.filter(file => !criticalExecutables.includes(file));
       let fixedCount = 0;
       
-      for (const file of remainingFiles) {
+      for (const file of binFiles) {
         try {
           const filePath = path.join(binDir, file);
-          await fs.chmod(filePath, 0o755);
-          fixedCount++;
-        } catch (error) {
-          // Continue with other files
+          const stats = await fs.stat(filePath);
+          
+          // Only process regular files, not symlinks
+          if (stats.isFile()) {
+            await fs.chmod(filePath, 0o755);
+            fixedCount++;
+            
+            // Special logging for react-router
+            if (file === 'react-router') {
+              await this.addLog(deploymentId, `✅ Fixed permissions for react-router executable`);
+            }
+          }
+        } catch (error: any) {
+          await this.addLog(deploymentId, `⚠️ Failed to fix ${file}: ${error.message}`);
         }
       }
       
-      await this.addLog(deploymentId, `✅ Fixed permissions for ${fixedCount}/${remainingFiles.length} remaining files`);
+      await this.addLog(deploymentId, `✅ Fixed permissions for ${fixedCount}/${binFiles.length} files`);
       
-      // Final verification: Test react-router specifically
-      await this.testReactRouterExecutable(deploymentId, projectDir);
+      // Method 3: Verify react-router specifically
+      await this.verifyReactRouterPermissions(deploymentId, projectDir);
       
     } catch (error: any) {
       await this.addLog(deploymentId, `❌ Permission fixing failed: ${error.message}`);
-      throw error; // This is critical, so we should fail the deployment
+      // Don't throw here - try to continue deployment
     }
   }
 
-  private async runSystemCommand(deploymentId: string, command: string, args: string[], cwd: string): Promise<{success: boolean, output: string}> {
+  private async verifyReactRouterPermissions(deploymentId: string, projectDir: string): Promise<void> {
+    const reactRouterPath = path.join(projectDir, 'node_modules', '.bin', 'react-router');
+    
+    try {
+      await this.addLog(deploymentId, '🔍 Verifying react-router permissions...');
+      
+      // Check if file exists
+      const exists = await fs.access(reactRouterPath).then(() => true).catch(() => false);
+      if (!exists) {
+        await this.addLog(deploymentId, '❌ react-router executable not found');
+        return;
+      }
+      
+      // Check file stats
+      const stats = await fs.stat(reactRouterPath);
+      const mode = stats.mode;
+      const isExecutable = !!(mode & parseInt('111', 8));
+      
+      await this.addLog(deploymentId, `📊 react-router mode: ${mode.toString(8)} (executable: ${isExecutable})`);
+      
+      if (!isExecutable) {
+        await this.addLog(deploymentId, '🔧 react-router not executable, attempting to fix...');
+        
+        // Try multiple methods to make it executable
+        await fs.chmod(reactRouterPath, 0o755);
+        
+        // Also try using system chmod
+        const systemChmod = await this.runCommand(deploymentId, 'chmod', ['755', reactRouterPath], projectDir);
+        
+        // Verify the fix
+        const newStats = await fs.stat(reactRouterPath);
+        const newIsExecutable = !!(newStats.mode & parseInt('111', 8));
+        
+        if (newIsExecutable) {
+          await this.addLog(deploymentId, '✅ react-router is now executable');
+        } else {
+          await this.addLog(deploymentId, '❌ Failed to make react-router executable');
+        }
+      } else {
+        await this.addLog(deploymentId, '✅ react-router is already executable');
+      }
+      
+      // Test execution
+      const testResult = await this.runCommand(deploymentId, reactRouterPath, ['--version'], projectDir);
+      if (testResult.success || testResult.output.includes('react-router')) {
+        await this.addLog(deploymentId, '✅ react-router execution test passed');
+      } else {
+        await this.addLog(deploymentId, '❌ react-router execution test failed');
+        await this.addLog(deploymentId, `Test output: ${testResult.output.substring(0, 200)}`);
+      }
+      
+    } catch (error: any) {
+      await this.addLog(deploymentId, `❌ react-router verification failed: ${error.message}`);
+    }
+  }
+
+  private async runCommand(deploymentId: string, command: string, args: string[], cwd: string): Promise<{success: boolean, output: string}> {
     return new Promise((resolve) => {
       const process = spawn(command, args, {
         cwd,
-        stdio: 'pipe'
+        stdio: 'pipe',
+        shell: true // Use shell to handle globbing
       });
 
       let output = '';
@@ -365,24 +390,13 @@ export class DeploymentProcessor {
         errorOutput += data.toString();
       });
 
-      process.on('close', async (code) => {
+      process.on('close', (code) => {
         const success = code === 0;
         const fullOutput = output + errorOutput;
-        
-        if (success) {
-          await this.addLog(deploymentId, `[${command.toUpperCase()}] Command completed successfully`);
-        } else {
-          await this.addLog(deploymentId, `[${command.toUpperCase()}] Command failed with code ${code}`);
-          if (fullOutput.trim()) {
-            await this.addLog(deploymentId, `[${command.toUpperCase()}] Output: ${fullOutput.trim()}`);
-          }
-        }
-        
         resolve({ success, output: fullOutput });
       });
 
-      process.on('error', async (error) => {
-        await this.addLog(deploymentId, `[${command.toUpperCase()}] Error: ${error.message}`);
+      process.on('error', (error) => {
         resolve({ success: false, output: error.message });
       });
 
@@ -392,50 +406,6 @@ export class DeploymentProcessor {
         resolve({ success: false, output: 'Command timeout' });
       }, 30000);
     });
-  }
-
-  private async testReactRouterExecutable(deploymentId: string, projectDir: string): Promise<void> {
-    await this.addLog(deploymentId, '🧪 Testing react-router executable...');
-    
-    const binPath = path.join(projectDir, 'node_modules', '.bin', 'react-router');
-    
-    try {
-      // Check if file exists
-      const exists = await fs.access(binPath).then(() => true).catch(() => false);
-      if (!exists) {
-        await this.addLog(deploymentId, '❌ react-router executable not found');
-        return;
-      }
-      
-      // Check file stats
-      const stats = await fs.stat(binPath);
-      const isExecutable = !!(stats.mode & parseInt('111', 8));
-      await this.addLog(deploymentId, `📊 react-router executable status: ${isExecutable ? 'YES' : 'NO'}`);
-      await this.addLog(deploymentId, `📊 react-router file mode: ${stats.mode.toString(8)}`);
-      
-      // Try to run it with --help to test execution
-      const testResult = await this.runSystemCommand(deploymentId, binPath, ['--help'], projectDir);
-      
-      if (testResult.success || testResult.output.includes('react-router') || testResult.output.includes('Usage')) {
-        await this.addLog(deploymentId, '✅ react-router executable test PASSED');
-      } else {
-        await this.addLog(deploymentId, '❌ react-router executable test FAILED');
-        await this.addLog(deploymentId, `Test output: ${testResult.output.substring(0, 200)}`);
-        
-        // One more desperate attempt to fix permissions
-        await this.addLog(deploymentId, '🔧 Making final permission fix attempt...');
-        try {
-          await fs.chmod(binPath, 0o755);
-          const chmodResult = await this.runSystemCommand(deploymentId, 'chmod', ['755', binPath], projectDir);
-          await this.addLog(deploymentId, `Final chmod result: ${chmodResult.success ? 'SUCCESS' : 'FAILED'}`);
-        } catch (finalError: any) {
-          await this.addLog(deploymentId, `Final permission fix failed: ${finalError.message}`);
-        }
-      }
-      
-    } catch (error: any) {
-      await this.addLog(deploymentId, `❌ react-router test failed: ${error.message}`);
-    }
   }
 
   private async installSSTPlat(deploymentId: string): Promise<void> {
