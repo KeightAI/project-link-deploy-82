@@ -53,7 +53,7 @@ export class DeploymentProcessor {
       
       // Step 5: Install SST platform
       await this.updateDeploymentStatus(id, 'preparing');
-      await this.installSSTPlat form(id);
+      await this.installSSTPlat(id);
       
       // Step 6: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
@@ -438,7 +438,7 @@ export class DeploymentProcessor {
     }
   }
 
-  private async installSSTPlat form(deploymentId: string): Promise<void> {
+  private async installSSTPlat(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
     await this.addLog(deploymentId, '🔧 Installing SST platform...');
