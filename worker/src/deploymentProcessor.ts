@@ -48,24 +48,21 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'installing');
       await this.installDependencies(id);
       
-      // Step 4: Fix file permissions after dependency installation (enhanced)
-      await this.fixFilePermissions(id);
+      // Step 4: Fix file permissions comprehensively
+      await this.fixAllFilePermissions(id);
       
       // Step 5: Verify critical executables
       await this.verifyCriticalExecutables(id);
       
-      // Step 6: Verify SST installation and setup (non-blocking)
-      await this.verifySSTSetup(id);
-      
-      // Step 7: Install SST platform
+      // Step 6: Install SST platform
       await this.updateDeploymentStatus(id, 'preparing');
       await this.installSSTPlat form(id);
       
-      // Step 8: Run SST deployment
+      // Step 7: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 9: Complete
+      // Step 8: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -73,10 +70,6 @@ export class DeploymentProcessor {
       console.error(`Deployment ${id} failed:`, error);
       await this.updateDeploymentStatus(id, 'failed');
       await this.addLog(id, `Deployment failed: ${error.message} ❌`);
-      
-      // Try to capture SST logs and Pulumi event logs on failure
-      await this.captureSSTLogs(id);
-      await this.capturePulumiEventLogs(id);
     } finally {
       // Cleanup
       await this.cleanup(id);
@@ -258,13 +251,13 @@ export class DeploymentProcessor {
     }
   }
 
-  private async fixFilePermissions(deploymentId: string): Promise<void> {
+  private async fixAllFilePermissions(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
-    await this.addLog(deploymentId, '🔧 Fixing file permissions...');
+    await this.addLog(deploymentId, '🔧 Comprehensively fixing file permissions...');
     
     try {
-      // Check if node_modules/.bin directory exists
+      // Step 1: Fix node_modules/.bin directory permissions
       const binDir = path.join(projectDir, 'node_modules', '.bin');
       const binDirExists = await fs.access(binDir).then(() => true).catch(() => false);
       
@@ -273,41 +266,120 @@ export class DeploymentProcessor {
         return;
       }
       
-      // List files in .bin directory
+      // Step 2: Make the entire .bin directory executable
+      try {
+        await fs.chmod(binDir, 0o755);
+        await this.addLog(deploymentId, '✅ Fixed .bin directory permissions');
+      } catch (error: any) {
+        await this.addLog(deploymentId, `⚠️ Failed to fix .bin directory: ${error.message}`);
+      }
+      
+      // Step 3: Fix permissions for ALL files in .bin directory
       const binFiles = await fs.readdir(binDir);
       await this.addLog(deploymentId, `📋 Found ${binFiles.length} executable files in node_modules/.bin`);
       
-      // Fix permissions for each file individually to ensure success
       let successCount = 0;
       let failureCount = 0;
       
-      for (const file of binFiles) {
+      // Use Promise.allSettled to fix all files in parallel
+      const permissionPromises = binFiles.map(async (file) => {
         try {
           const filePath = path.join(binDir, file);
-          await fs.chmod(filePath, 0o755);
-          successCount++;
           
-          // Log important executables specifically
-          if (['react-router', 'sst', 'vite', 'tsc'].includes(file)) {
-            await this.addLog(deploymentId, `✅ Fixed permissions for ${file}`);
+          // Get file stats first
+          const stats = await fs.stat(filePath);
+          
+          // Only process regular files and symlinks
+          if (stats.isFile() || stats.isSymbolicLink()) {
+            await fs.chmod(filePath, 0o755);
+            return { file, success: true, error: null };
+          } else {
+            return { file, success: true, error: 'skipped (not a file)' };
           }
         } catch (error: any) {
-          failureCount++;
-          if (['react-router', 'sst', 'vite', 'tsc'].includes(file)) {
-            await this.addLog(deploymentId, `❌ Failed to fix permissions for ${file}: ${error.message}`);
-          }
+          return { file, success: false, error: error.message };
         }
-      }
+      });
+      
+      const results = await Promise.allSettled(permissionPromises);
+      
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          const { file, success, error } = result.value;
+          if (success) {
+            successCount++;
+            // Log important executables specifically
+            if (['react-router', 'sst', 'vite', 'tsc', 'npm', 'npx'].includes(file)) {
+              this.addLog(deploymentId, `✅ Fixed permissions for ${file}`);
+            }
+          } else {
+            failureCount++;
+            if (['react-router', 'sst', 'vite', 'tsc', 'npm', 'npx'].includes(file)) {
+              this.addLog(deploymentId, `❌ Failed to fix permissions for ${file}: ${error}`);
+            }
+          }
+        } else {
+          failureCount++;
+        }
+      });
       
       await this.addLog(deploymentId, `✅ Fixed permissions for ${successCount}/${binFiles.length} files`);
       
-      if (failureCount > 0) {
-        await this.addLog(deploymentId, `⚠️ Failed to fix ${failureCount} files, but continuing...`);
-      }
+      // Step 4: Use system commands as fallback for critical executables
+      await this.ensureCriticalExecutablePermissions(deploymentId, projectDir);
       
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ File permission fix failed: ${error.message}`);
       await this.addLog(deploymentId, '⚠️ Continuing deployment despite permission fix failure...');
+    }
+  }
+
+  private async ensureCriticalExecutablePermissions(deploymentId: string, projectDir: string): Promise<void> {
+    const binDir = path.join(projectDir, 'node_modules', '.bin');
+    const criticalExecutables = ['react-router', 'sst', 'vite', 'tsc'];
+    
+    await this.addLog(deploymentId, '🔒 Ensuring critical executable permissions with system commands...');
+    
+    for (const executable of criticalExecutables) {
+      try {
+        const executablePath = path.join(binDir, executable);
+        const exists = await fs.access(executablePath).then(() => true).catch(() => false);
+        
+        if (exists) {
+          // Use system chmod command as fallback
+          const chmodProcess = spawn('chmod', ['+x', executablePath], {
+            cwd: projectDir,
+            stdio: 'pipe'
+          });
+          
+          await new Promise<void>((resolve, reject) => {
+            chmodProcess.on('close', async (code) => {
+              if (code === 0) {
+                await this.addLog(deploymentId, `✅ System chmod succeeded for ${executable}`);
+                resolve();
+              } else {
+                await this.addLog(deploymentId, `⚠️ System chmod failed for ${executable} (code: ${code})`);
+                resolve(); // Don't reject - continue with other executables
+              }
+            });
+            
+            chmodProcess.on('error', async (error) => {
+              await this.addLog(deploymentId, `⚠️ System chmod error for ${executable}: ${error.message}`);
+              resolve(); // Don't reject - continue with other executables
+            });
+            
+            // Timeout after 5 seconds
+            setTimeout(() => {
+              chmodProcess.kill('SIGTERM');
+              resolve();
+            }, 5000);
+          });
+        } else {
+          await this.addLog(deploymentId, `⚠️ ${executable}: not found in node_modules/.bin`);
+        }
+      } catch (error: any) {
+        await this.addLog(deploymentId, `⚠️ ${executable}: system permission fix failed - ${error.message}`);
+      }
     }
   }
 
