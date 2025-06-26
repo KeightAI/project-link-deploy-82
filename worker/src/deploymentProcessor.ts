@@ -585,6 +585,33 @@ export class DeploymentProcessor {
     await this.addLog(deploymentId, `🎯 Stage: ${stage}`);
     await this.addLog(deploymentId, `📂 Working directory: ${projectDir}`);
 
+    // Add retry logic for deployment
+    const maxRetries = 2;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.addLog(deploymentId, `🔄 Deployment attempt ${attempt}/${maxRetries}`);
+        await this.performSSTDeploy(deploymentId, stage, projectDir);
+        return; // Success, exit retry loop
+      } catch (error: any) {
+        lastError = error;
+        await this.addLog(deploymentId, `❌ Attempt ${attempt} failed: ${error.message}`);
+        
+        if (attempt < maxRetries) {
+          // Clean up any partial deployment state before retry
+          await this.cleanupPartialDeployment(deploymentId, projectDir);
+          await this.addLog(deploymentId, `⏳ Waiting 30 seconds before retry...`);
+          await new Promise(resolve => setTimeout(resolve, 30000));
+        }
+      }
+    }
+
+    // If we get here, all retries failed
+    throw lastError || new Error('All deployment attempts failed');
+  }
+
+  private async performSSTDeploy(deploymentId: string, stage: string, projectDir: string): Promise<void> {
     return new Promise((resolve, reject) => {
       // Enhanced environment variables for better compatibility
       const deploymentEnv = { 
@@ -602,7 +629,10 @@ export class DeploymentProcessor {
         NODE_MAX_OLD_SPACE_SIZE: '2048',
         // Add Pulumi specific environment variables for better logging
         PULUMI_DEBUG_GRPC: '1',
-        PULUMI_SKIP_UPDATE_CHECK: 'true'
+        PULUMI_SKIP_UPDATE_CHECK: 'true',
+        // Add AWS configuration for better reliability
+        AWS_MAX_ATTEMPTS: '3',
+        AWS_RETRY_MODE: 'adaptive'
       };
 
       // Use npx to handle permissions automatically
@@ -611,6 +641,9 @@ export class DeploymentProcessor {
         stdio: 'pipe',
         env: deploymentEnv
       });
+
+      let hasErrors = false;
+      let errorMessages: string[] = [];
 
       // Capture ALL stdout without filtering
       sstProcess.stdout?.on('data', (data) => {
@@ -625,15 +658,29 @@ export class DeploymentProcessor {
         }
       });
 
-      // Capture ALL stderr without aggressive filtering
+      // Capture ALL stderr with better error detection
       sstProcess.stderr?.on('data', (data) => {
         const output = data.toString();
         if (output.trim()) {
+          // Check for critical errors
+          const isCriticalError = output.includes('failed to unmarshal') || 
+                                 output.includes('invalid character') ||
+                                 output.includes('JSON') ||
+                                 output.includes('error') ||
+                                 output.includes('Error') ||
+                                 output.includes('ERROR');
+
+          if (isCriticalError) {
+            hasErrors = true;
+            errorMessages.push(output.trim());
+          }
+
           // Only filter out known harmless messages, but be much less aggressive
           const harmlessPatterns = [
             /^npm WARN/,
             /^npm warn/,
-            /ExperimentalWarning.*--experimental-loader/
+            /ExperimentalWarning.*--experimental-loader/,
+            /DeprecationWarning/
           ];
           
           const isHarmless = harmlessPatterns.some(pattern => pattern.test(output));
@@ -641,7 +688,8 @@ export class DeploymentProcessor {
           if (!isHarmless) {
             output.split('\n').forEach((line: string) => {
               if (line.trim()) {
-                this.addLog(deploymentId, `[SST STDERR] ${line.trim()}`);
+                const logLevel = isCriticalError ? 'ERROR' : 'STDERR';
+                this.addLog(deploymentId, `[SST ${logLevel}] ${line.trim()}`);
               }
             });
           }
@@ -651,11 +699,16 @@ export class DeploymentProcessor {
       sstProcess.on('close', async (code) => {
         await this.addLog(deploymentId, `[SST] Process exited with code: ${code}`);
         
-        if (code === 0) {
+        if (code === 0 && !hasErrors) {
           await this.addLog(deploymentId, '✅ SST deployment completed successfully!');
           resolve();
         } else {
-          const error = `SST deployment failed with exit code ${code}`;
+          let error = `SST deployment failed with exit code ${code}`;
+          
+          if (hasErrors && errorMessages.length > 0) {
+            error += `. Critical errors: ${errorMessages.join('; ')}`;
+          }
+          
           await this.addLog(deploymentId, `❌ ${error}`);
           
           // Try to capture additional logs from SST and Pulumi
@@ -671,12 +724,46 @@ export class DeploymentProcessor {
         reject(error);
       });
 
-      // Reasonable timeout of 40 minutes for deployments
+      // Extended timeout of 45 minutes for deployments (some AWS resources take time)
       setTimeout(() => {
         sstProcess.kill('SIGKILL');
-        reject(new Error('Deployment timeout after 40 minutes'));
-      }, 40 * 60 * 1000);
+        reject(new Error('Deployment timeout after 45 minutes'));
+      }, 45 * 60 * 1000);
     });
+  }
+
+  private async cleanupPartialDeployment(deploymentId: string, projectDir: string): Promise<void> {
+    try {
+      await this.addLog(deploymentId, '🧹 Cleaning up partial deployment state...');
+      
+      // Clean up .sst directory to force fresh state
+      const sstDir = path.join(projectDir, '.sst');
+      const sstDirExists = await fs.access(sstDir).then(() => true).catch(() => false);
+      
+      if (sstDirExists) {
+        // Only remove pulumi state and logs, keep platform binaries
+        const pulmiDir = path.join(sstDir, 'pulumi');
+        const logDir = path.join(sstDir, 'log');
+        
+        const pulumiExists = await fs.access(pulmiDir).then(() => true).catch(() => false);
+        const logExists = await fs.access(logDir).then(() => true).catch(() => false);
+        
+        if (pulumiExists) {
+          await fs.rm(pulmiDir, { recursive: true, force: true });
+          await this.addLog(deploymentId, '✅ Cleared Pulumi state');
+        }
+        
+        if (logExists) {
+          await fs.rm(logDir, { recursive: true, force: true });
+          await this.addLog(deploymentId, '✅ Cleared SST logs');
+        }
+      }
+      
+      await this.addLog(deploymentId, '✅ Cleanup completed');
+    } catch (error: any) {
+      await this.addLog(deploymentId, `⚠️ Cleanup failed: ${error.message}`);
+      // Don't throw here - cleanup failure shouldn't prevent retry
+    }
   }
 
   private async captureSSTLogs(deploymentId: string): Promise<void> {
