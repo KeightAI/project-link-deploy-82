@@ -48,21 +48,24 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'installing');
       await this.installDependencies(id);
       
-      // Step 4: Fix file permissions comprehensively
-      await this.fixAllFilePermissions(id);
+      // Step 4: Fix file permissions after dependency installation (enhanced)
+      await this.fixFilePermissions(id);
       
       // Step 5: Verify critical executables
       await this.verifyCriticalExecutables(id);
       
-      // Step 6: Install SST platform
+      // Step 6: Verify SST installation and setup (non-blocking)
+      await this.verifySSTSetup(id);
+      
+      // Step 7: Install SST platform
       await this.updateDeploymentStatus(id, 'preparing');
       await this.installSSTPlat form(id);
       
-      // Step 7: Run SST deployment
+      // Step 8: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 8: Complete
+      // Step 9: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -70,6 +73,10 @@ export class DeploymentProcessor {
       console.error(`Deployment ${id} failed:`, error);
       await this.updateDeploymentStatus(id, 'failed');
       await this.addLog(id, `Deployment failed: ${error.message} ❌`);
+      
+      // Try to capture SST logs and Pulumi event logs on failure
+      await this.captureSSTLogs(id);
+      await this.capturePulumiEventLogs(id);
     } finally {
       // Cleanup
       await this.cleanup(id);
@@ -251,13 +258,13 @@ export class DeploymentProcessor {
     }
   }
 
-  private async fixAllFilePermissions(deploymentId: string): Promise<void> {
+  private async fixFilePermissions(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
-    await this.addLog(deploymentId, '🔧 Comprehensively fixing file permissions...');
+    await this.addLog(deploymentId, '🔧 Fixing file permissions...');
     
     try {
-      // Step 1: Fix node_modules/.bin directory permissions
+      // Check if node_modules/.bin directory exists
       const binDir = path.join(projectDir, 'node_modules', '.bin');
       const binDirExists = await fs.access(binDir).then(() => true).catch(() => false);
       
@@ -266,120 +273,41 @@ export class DeploymentProcessor {
         return;
       }
       
-      // Step 2: Make the entire .bin directory executable
-      try {
-        await fs.chmod(binDir, 0o755);
-        await this.addLog(deploymentId, '✅ Fixed .bin directory permissions');
-      } catch (error: any) {
-        await this.addLog(deploymentId, `⚠️ Failed to fix .bin directory: ${error.message}`);
-      }
-      
-      // Step 3: Fix permissions for ALL files in .bin directory
+      // List files in .bin directory
       const binFiles = await fs.readdir(binDir);
       await this.addLog(deploymentId, `📋 Found ${binFiles.length} executable files in node_modules/.bin`);
       
+      // Fix permissions for each file individually to ensure success
       let successCount = 0;
       let failureCount = 0;
       
-      // Use Promise.allSettled to fix all files in parallel
-      const permissionPromises = binFiles.map(async (file) => {
+      for (const file of binFiles) {
         try {
           const filePath = path.join(binDir, file);
+          await fs.chmod(filePath, 0o755);
+          successCount++;
           
-          // Get file stats first
-          const stats = await fs.stat(filePath);
-          
-          // Only process regular files and symlinks
-          if (stats.isFile() || stats.isSymbolicLink()) {
-            await fs.chmod(filePath, 0o755);
-            return { file, success: true, error: null };
-          } else {
-            return { file, success: true, error: 'skipped (not a file)' };
+          // Log important executables specifically
+          if (['react-router', 'sst', 'vite', 'tsc'].includes(file)) {
+            await this.addLog(deploymentId, `✅ Fixed permissions for ${file}`);
           }
         } catch (error: any) {
-          return { file, success: false, error: error.message };
-        }
-      });
-      
-      const results = await Promise.allSettled(permissionPromises);
-      
-      results.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          const { file, success, error } = result.value;
-          if (success) {
-            successCount++;
-            // Log important executables specifically
-            if (['react-router', 'sst', 'vite', 'tsc', 'npm', 'npx'].includes(file)) {
-              this.addLog(deploymentId, `✅ Fixed permissions for ${file}`);
-            }
-          } else {
-            failureCount++;
-            if (['react-router', 'sst', 'vite', 'tsc', 'npm', 'npx'].includes(file)) {
-              this.addLog(deploymentId, `❌ Failed to fix permissions for ${file}: ${error}`);
-            }
-          }
-        } else {
           failureCount++;
+          if (['react-router', 'sst', 'vite', 'tsc'].includes(file)) {
+            await this.addLog(deploymentId, `❌ Failed to fix permissions for ${file}: ${error.message}`);
+          }
         }
-      });
+      }
       
       await this.addLog(deploymentId, `✅ Fixed permissions for ${successCount}/${binFiles.length} files`);
       
-      // Step 4: Use system commands as fallback for critical executables
-      await this.ensureCriticalExecutablePermissions(deploymentId, projectDir);
+      if (failureCount > 0) {
+        await this.addLog(deploymentId, `⚠️ Failed to fix ${failureCount} files, but continuing...`);
+      }
       
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ File permission fix failed: ${error.message}`);
       await this.addLog(deploymentId, '⚠️ Continuing deployment despite permission fix failure...');
-    }
-  }
-
-  private async ensureCriticalExecutablePermissions(deploymentId: string, projectDir: string): Promise<void> {
-    const binDir = path.join(projectDir, 'node_modules', '.bin');
-    const criticalExecutables = ['react-router', 'sst', 'vite', 'tsc'];
-    
-    await this.addLog(deploymentId, '🔒 Ensuring critical executable permissions with system commands...');
-    
-    for (const executable of criticalExecutables) {
-      try {
-        const executablePath = path.join(binDir, executable);
-        const exists = await fs.access(executablePath).then(() => true).catch(() => false);
-        
-        if (exists) {
-          // Use system chmod command as fallback
-          const chmodProcess = spawn('chmod', ['+x', executablePath], {
-            cwd: projectDir,
-            stdio: 'pipe'
-          });
-          
-          await new Promise<void>((resolve, reject) => {
-            chmodProcess.on('close', async (code) => {
-              if (code === 0) {
-                await this.addLog(deploymentId, `✅ System chmod succeeded for ${executable}`);
-                resolve();
-              } else {
-                await this.addLog(deploymentId, `⚠️ System chmod failed for ${executable} (code: ${code})`);
-                resolve(); // Don't reject - continue with other executables
-              }
-            });
-            
-            chmodProcess.on('error', async (error) => {
-              await this.addLog(deploymentId, `⚠️ System chmod error for ${executable}: ${error.message}`);
-              resolve(); // Don't reject - continue with other executables
-            });
-            
-            // Timeout after 5 seconds
-            setTimeout(() => {
-              chmodProcess.kill('SIGTERM');
-              resolve();
-            }, 5000);
-          });
-        } else {
-          await this.addLog(deploymentId, `⚠️ ${executable}: not found in node_modules/.bin`);
-        }
-      } catch (error: any) {
-        await this.addLog(deploymentId, `⚠️ ${executable}: system permission fix failed - ${error.message}`);
-      }
     }
   }
 
@@ -657,33 +585,6 @@ export class DeploymentProcessor {
     await this.addLog(deploymentId, `🎯 Stage: ${stage}`);
     await this.addLog(deploymentId, `📂 Working directory: ${projectDir}`);
 
-    // Add retry logic for deployment
-    const maxRetries = 2;
-    let lastError: Error | null = null;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        await this.addLog(deploymentId, `🔄 Deployment attempt ${attempt}/${maxRetries}`);
-        await this.performSSTDeploy(deploymentId, stage, projectDir);
-        return; // Success, exit retry loop
-      } catch (error: any) {
-        lastError = error;
-        await this.addLog(deploymentId, `❌ Attempt ${attempt} failed: ${error.message}`);
-        
-        if (attempt < maxRetries) {
-          // Clean up any partial deployment state before retry
-          await this.cleanupPartialDeployment(deploymentId, projectDir);
-          await this.addLog(deploymentId, `⏳ Waiting 30 seconds before retry...`);
-          await new Promise(resolve => setTimeout(resolve, 30000));
-        }
-      }
-    }
-
-    // If we get here, all retries failed
-    throw lastError || new Error('All deployment attempts failed');
-  }
-
-  private async performSSTDeploy(deploymentId: string, stage: string, projectDir: string): Promise<void> {
     return new Promise((resolve, reject) => {
       // Enhanced environment variables for better compatibility
       const deploymentEnv = { 
@@ -701,10 +602,7 @@ export class DeploymentProcessor {
         NODE_MAX_OLD_SPACE_SIZE: '2048',
         // Add Pulumi specific environment variables for better logging
         PULUMI_DEBUG_GRPC: '1',
-        PULUMI_SKIP_UPDATE_CHECK: 'true',
-        // Add AWS configuration for better reliability
-        AWS_MAX_ATTEMPTS: '3',
-        AWS_RETRY_MODE: 'adaptive'
+        PULUMI_SKIP_UPDATE_CHECK: 'true'
       };
 
       // Use npx to handle permissions automatically
@@ -713,9 +611,6 @@ export class DeploymentProcessor {
         stdio: 'pipe',
         env: deploymentEnv
       });
-
-      let hasErrors = false;
-      let errorMessages: string[] = [];
 
       // Capture ALL stdout without filtering
       sstProcess.stdout?.on('data', (data) => {
@@ -730,29 +625,15 @@ export class DeploymentProcessor {
         }
       });
 
-      // Capture ALL stderr with better error detection
+      // Capture ALL stderr without aggressive filtering
       sstProcess.stderr?.on('data', (data) => {
         const output = data.toString();
         if (output.trim()) {
-          // Check for critical errors
-          const isCriticalError = output.includes('failed to unmarshal') || 
-                                 output.includes('invalid character') ||
-                                 output.includes('JSON') ||
-                                 output.includes('error') ||
-                                 output.includes('Error') ||
-                                 output.includes('ERROR');
-
-          if (isCriticalError) {
-            hasErrors = true;
-            errorMessages.push(output.trim());
-          }
-
           // Only filter out known harmless messages, but be much less aggressive
           const harmlessPatterns = [
             /^npm WARN/,
             /^npm warn/,
-            /ExperimentalWarning.*--experimental-loader/,
-            /DeprecationWarning/
+            /ExperimentalWarning.*--experimental-loader/
           ];
           
           const isHarmless = harmlessPatterns.some(pattern => pattern.test(output));
@@ -760,8 +641,7 @@ export class DeploymentProcessor {
           if (!isHarmless) {
             output.split('\n').forEach((line: string) => {
               if (line.trim()) {
-                const logLevel = isCriticalError ? 'ERROR' : 'STDERR';
-                this.addLog(deploymentId, `[SST ${logLevel}] ${line.trim()}`);
+                this.addLog(deploymentId, `[SST STDERR] ${line.trim()}`);
               }
             });
           }
@@ -771,16 +651,11 @@ export class DeploymentProcessor {
       sstProcess.on('close', async (code) => {
         await this.addLog(deploymentId, `[SST] Process exited with code: ${code}`);
         
-        if (code === 0 && !hasErrors) {
+        if (code === 0) {
           await this.addLog(deploymentId, '✅ SST deployment completed successfully!');
           resolve();
         } else {
-          let error = `SST deployment failed with exit code ${code}`;
-          
-          if (hasErrors && errorMessages.length > 0) {
-            error += `. Critical errors: ${errorMessages.join('; ')}`;
-          }
-          
+          const error = `SST deployment failed with exit code ${code}`;
           await this.addLog(deploymentId, `❌ ${error}`);
           
           // Try to capture additional logs from SST and Pulumi
@@ -796,46 +671,12 @@ export class DeploymentProcessor {
         reject(error);
       });
 
-      // Extended timeout of 45 minutes for deployments (some AWS resources take time)
+      // Reasonable timeout of 40 minutes for deployments
       setTimeout(() => {
         sstProcess.kill('SIGKILL');
-        reject(new Error('Deployment timeout after 45 minutes'));
-      }, 45 * 60 * 1000);
+        reject(new Error('Deployment timeout after 40 minutes'));
+      }, 40 * 60 * 1000);
     });
-  }
-
-  private async cleanupPartialDeployment(deploymentId: string, projectDir: string): Promise<void> {
-    try {
-      await this.addLog(deploymentId, '🧹 Cleaning up partial deployment state...');
-      
-      // Clean up .sst directory to force fresh state
-      const sstDir = path.join(projectDir, '.sst');
-      const sstDirExists = await fs.access(sstDir).then(() => true).catch(() => false);
-      
-      if (sstDirExists) {
-        // Only remove pulumi state and logs, keep platform binaries
-        const pulmiDir = path.join(sstDir, 'pulumi');
-        const logDir = path.join(sstDir, 'log');
-        
-        const pulumiExists = await fs.access(pulmiDir).then(() => true).catch(() => false);
-        const logExists = await fs.access(logDir).then(() => true).catch(() => false);
-        
-        if (pulumiExists) {
-          await fs.rm(pulmiDir, { recursive: true, force: true });
-          await this.addLog(deploymentId, '✅ Cleared Pulumi state');
-        }
-        
-        if (logExists) {
-          await fs.rm(logDir, { recursive: true, force: true });
-          await this.addLog(deploymentId, '✅ Cleared SST logs');
-        }
-      }
-      
-      await this.addLog(deploymentId, '✅ Cleanup completed');
-    } catch (error: any) {
-      await this.addLog(deploymentId, `⚠️ Cleanup failed: ${error.message}`);
-      // Don't throw here - cleanup failure shouldn't prevent retry
-    }
   }
 
   private async captureSSTLogs(deploymentId: string): Promise<void> {
