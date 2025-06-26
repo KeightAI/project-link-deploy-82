@@ -57,11 +57,15 @@ export class DeploymentProcessor {
       // Step 6: Verify SST installation and setup (non-blocking)
       await this.verifySSTSetup(id);
       
-      // Step 7: Run SST deployment
+      // Step 7: Install SST platform
+      await this.updateDeploymentStatus(id, 'preparing');
+      await this.installSSTPlat form(id);
+      
+      // Step 8: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 8: Complete
+      // Step 9: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -413,6 +417,77 @@ export class DeploymentProcessor {
         await this.addLog(deploymentId, `⚠️ SST installation error: ${error.message}`);
         resolve(); // Don't reject - make it non-blocking
       });
+    });
+  }
+
+  private async installSSTPlat form(deploymentId: string): Promise<void> {
+    const projectDir = path.join(this.workspaceDir, deploymentId);
+    
+    await this.addLog(deploymentId, '🔧 Installing SST platform...');
+
+    return new Promise((resolve, reject) => {
+      const installEnv = {
+        ...process.env,
+        NODE_ENV: 'production',
+        PATH: `${projectDir}/node_modules/.bin:${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
+        BUN_INSTALL: '/home/worker/.bun',
+        BUN_CONFIG_NO_CLEAR_TERMINAL: 'true',
+        SST_DEBUG: '1'
+      };
+
+      const installProcess = spawn('npx', ['sst', 'install'], {
+        cwd: projectDir,
+        stdio: 'pipe',
+        env: installEnv
+      });
+
+      // Capture stdout
+      installProcess.stdout?.on('data', (data) => {
+        const output = data.toString();
+        if (output.trim()) {
+          output.split('\n').forEach((line: string) => {
+            if (line.trim()) {
+              this.addLog(deploymentId, `[SST INSTALL] ${line.trim()}`);
+            }
+          });
+        }
+      });
+
+      // Capture stderr
+      installProcess.stderr?.on('data', (data) => {
+        const output = data.toString();
+        if (output.trim()) {
+          output.split('\n').forEach((line: string) => {
+            if (line.trim()) {
+              this.addLog(deploymentId, `[SST INSTALL WARN] ${line.trim()}`);
+            }
+          });
+        }
+      });
+
+      installProcess.on('close', async (code) => {
+        await this.addLog(deploymentId, `[SST INSTALL] Process exited with code: ${code}`);
+        
+        if (code === 0) {
+          await this.addLog(deploymentId, '✅ SST platform installed successfully!');
+          resolve();
+        } else {
+          const error = `SST platform installation failed with exit code ${code}`;
+          await this.addLog(deploymentId, `❌ ${error}`);
+          reject(new Error(error));
+        }
+      });
+
+      installProcess.on('error', async (error) => {
+        await this.addLog(deploymentId, `❌ SST platform install process error: ${error.message}`);
+        reject(error);
+      });
+
+      // Timeout for platform installation (5 minutes)
+      setTimeout(() => {
+        installProcess.kill('SIGKILL');
+        reject(new Error('SST platform installation timeout after 5 minutes'));
+      }, 5 * 60 * 1000);
     });
   }
 
