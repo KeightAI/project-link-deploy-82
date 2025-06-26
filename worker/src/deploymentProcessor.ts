@@ -48,24 +48,18 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'installing');
       await this.installDependencies(id);
       
-      // Step 4: Fix file permissions after dependency installation (enhanced)
-      await this.fixFilePermissions(id);
+      // Step 4: Fix file permissions comprehensively
+      await this.fixAllExecutablePermissions(id);
       
-      // Step 5: Verify critical executables
-      await this.verifyCriticalExecutables(id);
-      
-      // Step 6: Verify SST installation and setup (non-blocking)
-      await this.verifySSTSetup(id);
-      
-      // Step 7: Install SST platform
+      // Step 5: Install SST platform
       await this.updateDeploymentStatus(id, 'preparing');
       await this.installSSTPlat form(id);
       
-      // Step 8: Run SST deployment
+      // Step 6: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 9: Complete
+      // Step 7: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -258,166 +252,190 @@ export class DeploymentProcessor {
     }
   }
 
-  private async fixFilePermissions(deploymentId: string): Promise<void> {
+  private async fixAllExecutablePermissions(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
+    const binDir = path.join(projectDir, 'node_modules', '.bin');
     
-    await this.addLog(deploymentId, '🔧 Fixing file permissions...');
+    await this.addLog(deploymentId, '🔧 Fixing all executable permissions...');
     
     try {
       // Check if node_modules/.bin directory exists
-      const binDir = path.join(projectDir, 'node_modules', '.bin');
       const binDirExists = await fs.access(binDir).then(() => true).catch(() => false);
       
       if (!binDirExists) {
         await this.addLog(deploymentId, '⚠️ No node_modules/.bin directory found');
         return;
       }
+
+      // Method 1: Use system find command to fix all permissions at once
+      await this.addLog(deploymentId, '🔧 Using system find command to fix permissions...');
       
-      // List files in .bin directory
+      const findResult = await this.runSystemCommand(deploymentId, 'find', [
+        binDir,
+        '-type', 'f',
+        '-exec', 'chmod', '+x', '{}', ';'
+      ], projectDir);
+      
+      if (findResult.success) {
+        await this.addLog(deploymentId, '✅ System find command completed successfully');
+      } else {
+        await this.addLog(deploymentId, '⚠️ System find command failed, trying individual file approach...');
+      }
+
+      // Method 2: Fix individual files, especially react-router
       const binFiles = await fs.readdir(binDir);
-      await this.addLog(deploymentId, `📋 Found ${binFiles.length} executable files in node_modules/.bin`);
+      await this.addLog(deploymentId, `📋 Found ${binFiles.length} files in .bin directory`);
       
-      // Fix permissions for each file individually to ensure success
-      let successCount = 0;
-      let failureCount = 0;
+      const criticalExecutables = ['react-router', 'vite', 'tsc', 'sst'];
       
-      for (const file of binFiles) {
+      // Fix critical executables first
+      for (const executable of criticalExecutables) {
+        if (binFiles.includes(executable)) {
+          const execPath = path.join(binDir, executable);
+          
+          try {
+            // Method A: Node.js fs.chmod
+            await fs.chmod(execPath, 0o755);
+            await this.addLog(deploymentId, `✅ Fixed permissions for ${executable} (fs.chmod)`);
+            
+            // Method B: System chmod as backup
+            const chmodResult = await this.runSystemCommand(deploymentId, 'chmod', ['+x', execPath], projectDir);
+            if (chmodResult.success) {
+              await this.addLog(deploymentId, `✅ Confirmed permissions for ${executable} (system chmod)`);
+            }
+            
+            // Verify the fix worked
+            const stats = await fs.stat(execPath);
+            const isExecutable = !!(stats.mode & parseInt('111', 8));
+            
+            if (isExecutable) {
+              await this.addLog(deploymentId, `✅ ${executable} is now executable (verified)`);
+            } else {
+              await this.addLog(deploymentId, `❌ ${executable} still not executable after fix attempts`);
+            }
+            
+          } catch (error: any) {
+            await this.addLog(deploymentId, `❌ Failed to fix ${executable}: ${error.message}`);
+          }
+        } else {
+          await this.addLog(deploymentId, `⚠️ ${executable} not found in node_modules/.bin`);
+        }
+      }
+
+      // Fix remaining files
+      const remainingFiles = binFiles.filter(file => !criticalExecutables.includes(file));
+      let fixedCount = 0;
+      
+      for (const file of remainingFiles) {
         try {
           const filePath = path.join(binDir, file);
           await fs.chmod(filePath, 0o755);
-          successCount++;
-          
-          // Log important executables specifically
-          if (['react-router', 'sst', 'vite', 'tsc'].includes(file)) {
-            await this.addLog(deploymentId, `✅ Fixed permissions for ${file}`);
-          }
-        } catch (error: any) {
-          failureCount++;
-          if (['react-router', 'sst', 'vite', 'tsc'].includes(file)) {
-            await this.addLog(deploymentId, `❌ Failed to fix permissions for ${file}: ${error.message}`);
-          }
+          fixedCount++;
+        } catch (error) {
+          // Continue with other files
         }
       }
       
-      await this.addLog(deploymentId, `✅ Fixed permissions for ${successCount}/${binFiles.length} files`);
+      await this.addLog(deploymentId, `✅ Fixed permissions for ${fixedCount}/${remainingFiles.length} remaining files`);
       
-      if (failureCount > 0) {
-        await this.addLog(deploymentId, `⚠️ Failed to fix ${failureCount} files, but continuing...`);
-      }
-      
-    } catch (error: any) {
-      await this.addLog(deploymentId, `⚠️ File permission fix failed: ${error.message}`);
-      await this.addLog(deploymentId, '⚠️ Continuing deployment despite permission fix failure...');
-    }
-  }
-
-  private async verifyCriticalExecutables(deploymentId: string): Promise<void> {
-    const projectDir = path.join(this.workspaceDir, deploymentId);
-    const binDir = path.join(projectDir, 'node_modules', '.bin');
-    
-    await this.addLog(deploymentId, '🔍 Verifying critical executable permissions...');
-    
-    const criticalTools = ['react-router', 'sst', 'vite', 'tsc'];
-    
-    for (const tool of criticalTools) {
-      try {
-        const toolPath = path.join(binDir, tool);
-        const toolExists = await fs.access(toolPath).then(() => true).catch(() => false);
-        
-        if (toolExists) {
-          const stats = await fs.stat(toolPath);
-          const isExecutable = !!(stats.mode & parseInt('111', 8));
-          
-          if (isExecutable) {
-            await this.addLog(deploymentId, `✅ ${tool}: executable and ready`);
-          } else {
-            await this.addLog(deploymentId, `❌ ${tool}: NOT executable - attempting fix...`);
-            
-            // Try to fix this specific tool
-            try {
-              await fs.chmod(toolPath, 0o755);
-              await this.addLog(deploymentId, `✅ ${tool}: permission fixed successfully`);
-            } catch (fixError: any) {
-              await this.addLog(deploymentId, `❌ ${tool}: permission fix failed - ${fixError.message}`);
-            }
-          }
-        } else {
-          await this.addLog(deploymentId, `⚠️ ${tool}: not found in node_modules/.bin`);
-        }
-      } catch (error: any) {
-        await this.addLog(deploymentId, `⚠️ ${tool}: verification failed - ${error.message}`);
-      }
-    }
-  }
-
-  private async verifySSTSetup(deploymentId: string): Promise<void> {
-    const projectDir = path.join(this.workspaceDir, deploymentId);
-    
-    await this.addLog(deploymentId, '🔧 Verifying SST setup...');
-    
-    try {
-      // Check if SST is installed in node_modules
-      const sstPackagePath = path.join(projectDir, 'node_modules', 'sst', 'package.json');
-      const sstInstalled = await fs.access(sstPackagePath).then(() => true).catch(() => false);
-      
-      if (sstInstalled) {
-        const sstPackage = JSON.parse(await fs.readFile(sstPackagePath, 'utf-8'));
-        await this.addLog(deploymentId, `✅ SST installed: version ${sstPackage.version}`);
-      } else {
-        await this.addLog(deploymentId, '⚠️ SST not found in node_modules, attempting global installation...');
-        
-        // Try to install SST globally as a fallback
-        await this.installSSTGlobally(deploymentId);
-      }
-      
-      // Test SST command availability (non-blocking)
-      await this.testSSTCommand(deploymentId);
+      // Final verification: Test react-router specifically
+      await this.testReactRouterExecutable(deploymentId, projectDir);
       
     } catch (error: any) {
-      await this.addLog(deploymentId, `⚠️ SST setup verification failed: ${error.message}`);
-      await this.addLog(deploymentId, '⚠️ Continuing with deployment despite SST verification issues...');
-      // Don't throw here - make it non-blocking
+      await this.addLog(deploymentId, `❌ Permission fixing failed: ${error.message}`);
+      throw error; // This is critical, so we should fail the deployment
     }
   }
 
-  private async installSSTGlobally(deploymentId: string): Promise<void> {
-    const projectDir = path.join(this.workspaceDir, deploymentId);
-    
-    return new Promise((resolve, reject) => {
-      const installProcess = spawn('npm', ['install', '-g', 'sst@latest'], {
-        cwd: projectDir,
+  private async runSystemCommand(deploymentId: string, command: string, args: string[], cwd: string): Promise<{success: boolean, output: string}> {
+    return new Promise((resolve) => {
+      const process = spawn(command, args, {
+        cwd,
         stdio: 'pipe'
       });
 
-      installProcess.stdout?.on('data', (data) => {
-        const output = data.toString();
-        if (output.trim()) {
-          this.addLog(deploymentId, `[SST INSTALL] ${output.trim()}`);
-        }
+      let output = '';
+      let errorOutput = '';
+
+      process.stdout?.on('data', (data) => {
+        output += data.toString();
       });
 
-      installProcess.stderr?.on('data', (data) => {
-        const output = data.toString();
-        if (output.trim()) {
-          this.addLog(deploymentId, `[SST INSTALL WARN] ${output.trim()}`);
-        }
+      process.stderr?.on('data', (data) => {
+        errorOutput += data.toString();
       });
 
-      installProcess.on('close', async (code) => {
-        if (code === 0) {
-          await this.addLog(deploymentId, '✅ SST installed globally');
-          resolve();
+      process.on('close', async (code) => {
+        const success = code === 0;
+        const fullOutput = output + errorOutput;
+        
+        if (success) {
+          await this.addLog(deploymentId, `[${command.toUpperCase()}] Command completed successfully`);
         } else {
-          await this.addLog(deploymentId, `⚠️ SST global installation failed with code ${code}`);
-          resolve(); // Don't reject - make it non-blocking
+          await this.addLog(deploymentId, `[${command.toUpperCase()}] Command failed with code ${code}`);
+          if (fullOutput.trim()) {
+            await this.addLog(deploymentId, `[${command.toUpperCase()}] Output: ${fullOutput.trim()}`);
+          }
         }
+        
+        resolve({ success, output: fullOutput });
       });
 
-      installProcess.on('error', async (error) => {
-        await this.addLog(deploymentId, `⚠️ SST installation error: ${error.message}`);
-        resolve(); // Don't reject - make it non-blocking
+      process.on('error', async (error) => {
+        await this.addLog(deploymentId, `[${command.toUpperCase()}] Error: ${error.message}`);
+        resolve({ success: false, output: error.message });
       });
+
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        process.kill('SIGTERM');
+        resolve({ success: false, output: 'Command timeout' });
+      }, 30000);
     });
+  }
+
+  private async testReactRouterExecutable(deploymentId: string, projectDir: string): Promise<void> {
+    await this.addLog(deploymentId, '🧪 Testing react-router executable...');
+    
+    const binPath = path.join(projectDir, 'node_modules', '.bin', 'react-router');
+    
+    try {
+      // Check if file exists
+      const exists = await fs.access(binPath).then(() => true).catch(() => false);
+      if (!exists) {
+        await this.addLog(deploymentId, '❌ react-router executable not found');
+        return;
+      }
+      
+      // Check file stats
+      const stats = await fs.stat(binPath);
+      const isExecutable = !!(stats.mode & parseInt('111', 8));
+      await this.addLog(deploymentId, `📊 react-router executable status: ${isExecutable ? 'YES' : 'NO'}`);
+      await this.addLog(deploymentId, `📊 react-router file mode: ${stats.mode.toString(8)}`);
+      
+      // Try to run it with --help to test execution
+      const testResult = await this.runSystemCommand(deploymentId, binPath, ['--help'], projectDir);
+      
+      if (testResult.success || testResult.output.includes('react-router') || testResult.output.includes('Usage')) {
+        await this.addLog(deploymentId, '✅ react-router executable test PASSED');
+      } else {
+        await this.addLog(deploymentId, '❌ react-router executable test FAILED');
+        await this.addLog(deploymentId, `Test output: ${testResult.output.substring(0, 200)}`);
+        
+        // One more desperate attempt to fix permissions
+        await this.addLog(deploymentId, '🔧 Making final permission fix attempt...');
+        try {
+          await fs.chmod(binPath, 0o755);
+          const chmodResult = await this.runSystemCommand(deploymentId, 'chmod', ['755', binPath], projectDir);
+          await this.addLog(deploymentId, `Final chmod result: ${chmodResult.success ? 'SUCCESS' : 'FAILED'}`);
+        } catch (finalError: any) {
+          await this.addLog(deploymentId, `Final permission fix failed: ${finalError.message}`);
+        }
+      }
+      
+    } catch (error: any) {
+      await this.addLog(deploymentId, `❌ react-router test failed: ${error.message}`);
+    }
   }
 
   private async installSSTPlat form(deploymentId: string): Promise<void> {
@@ -488,93 +506,6 @@ export class DeploymentProcessor {
         installProcess.kill('SIGKILL');
         reject(new Error('SST platform installation timeout after 5 minutes'));
       }, 5 * 60 * 1000);
-    });
-  }
-
-  private async testSSTCommand(deploymentId: string): Promise<void> {
-    const projectDir = path.join(this.workspaceDir, deploymentId);
-    
-    // First try 'sst version' command (SST v3 syntax)
-    await this.addLog(deploymentId, '🔍 Testing SST command availability...');
-    
-    const testCommands = [
-      { cmd: 'sst', args: ['version'], desc: 'SST version check' },
-      { cmd: 'sst', args: [], desc: 'SST help check (fallback)' }
-    ];
-    
-    for (const test of testCommands) {
-      try {
-        const success = await this.runSSTTest(deploymentId, projectDir, test.cmd, test.args, test.desc);
-        if (success) {
-          await this.addLog(deploymentId, `✅ SST command available via: ${test.cmd} ${test.args.join(' ')}`);
-          return;
-        }
-      } catch (error: any) {
-        await this.addLog(deploymentId, `⚠️ ${test.desc} failed: ${error.message}`);
-      }
-    }
-    
-    await this.addLog(deploymentId, '⚠️ SST command verification failed, but continuing with deployment...');
-  }
-
-  private async runSSTTest(deploymentId: string, projectDir: string, command: string, args: string[], description: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      const testProcess = spawn(command, args, {
-        cwd: projectDir,
-        stdio: 'pipe',
-        env: {
-          ...process.env,
-          PATH: `${projectDir}/node_modules/.bin:${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
-          NODE_ENV: 'production'
-        }
-      });
-
-      let output = '';
-      let hasValidOutput = false;
-
-      testProcess.stdout?.on('data', (data) => {
-        const str = data.toString();
-        output += str;
-        
-        // Check for valid SST responses
-        if (str.includes('SST') || str.includes('sst') || str.includes('deploy') || str.includes('version')) {
-          hasValidOutput = true;
-        }
-      });
-
-      testProcess.stderr?.on('data', (data) => {
-        output += data.toString();
-      });
-
-      testProcess.on('close', async (code) => {
-        // For SST version command, exit code 0 is expected
-        // For SST help command, exit code 1 is actually normal (shows help)
-        const isSuccess = (args.includes('version') && code === 0) || 
-                         (args.length === 0 && hasValidOutput) ||
-                         (hasValidOutput && output.trim().length > 0);
-        
-        if (isSuccess) {
-          await this.addLog(deploymentId, `✅ ${description} successful`);
-          if (output.trim()) {
-            await this.addLog(deploymentId, `[SST OUTPUT] ${output.trim().substring(0, 200)}...`);
-          }
-          resolve(true);
-        } else {
-          await this.addLog(deploymentId, `⚠️ ${description} failed with code ${code}`);
-          resolve(false);
-        }
-      });
-
-      testProcess.on('error', async (error) => {
-        await this.addLog(deploymentId, `⚠️ ${description} error: ${error.message}`);
-        resolve(false);
-      });
-
-      // Short timeout for command tests
-      setTimeout(() => {
-        testProcess.kill('SIGTERM');
-        resolve(false);
-      }, 10000);
     });
   }
 
