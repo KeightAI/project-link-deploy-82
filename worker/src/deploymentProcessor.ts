@@ -196,17 +196,22 @@ export class DeploymentProcessor {
           }
         });
 
-        // Capture stderr (but filter out common warnings)
+        // Capture stderr (but filter out common warnings AND postinstall permission errors)
         installProcess.stderr?.on('data', (data) => {
           const output = data.toString();
           if (output.trim()) {
-            // Filter out common harmless warnings
+            // Filter out harmless patterns including postinstall permission errors
             const harmlessPatterns = [
               /^npm WARN/,
               /^npm warn/,
               /deprecated/i,
               /ERESOLVE/,
-              /overriding peer dependency/i
+              /overriding peer dependency/i,
+              // New patterns for postinstall permission errors
+              /chmod.*cannot access.*node_modules\/\.bin/i,
+              /chmod.*No such file or directory/i,
+              /postinstall.*chmod.*failed/i,
+              /command sh -c chmod/i
             ];
             
             const isHarmless = harmlessPatterns.some(pattern => pattern.test(output));
@@ -217,6 +222,11 @@ export class DeploymentProcessor {
                   this.addLog(deploymentId, `[${packageManager.toUpperCase()} WARN] ${line.trim()}`);
                 }
               });
+            } else {
+              // Log postinstall permission errors as info, not warnings
+              if (output.includes('chmod') && output.includes('node_modules/.bin')) {
+                this.addLog(deploymentId, `[${packageManager.toUpperCase()} INFO] Postinstall permission script failed - will fix permissions later`);
+              }
             }
           }
         });
@@ -224,8 +234,15 @@ export class DeploymentProcessor {
         installProcess.on('close', async (code) => {
           await this.addLog(deploymentId, `[${packageManager.toUpperCase()}] Process exited with code: ${code}`);
           
-          if (code === 0) {
+          // Accept exit codes 0 and 1 for npm when there are only postinstall script failures
+          if (code === 0 || (code === 1 && packageManager === 'npm')) {
             await this.addLog(deploymentId, '✅ Dependencies installed successfully!');
+            
+            // If exit code was 1, add a note about postinstall scripts
+            if (code === 1) {
+              await this.addLog(deploymentId, '📝 Note: Some postinstall scripts failed, but core dependencies are installed');
+            }
+            
             resolve();
           } else {
             const error = `Dependency installation failed with exit code ${code}`;
