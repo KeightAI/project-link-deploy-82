@@ -293,10 +293,9 @@ export class DeploymentProcessor {
           if (stats.isFile()) {
             await fs.chmod(filePath, 0o755);
             fixedCount++;
-            
-            // Special logging for react-router
-            if (file === 'react-router') {
-              await this.addLog(deploymentId, `✅ Fixed permissions for react-router executable`);
+            // Special logging for react-router and vite
+            if (file === 'react-router' || file === 'vite') {
+              await this.addLog(deploymentId, `✅ Fixed permissions for ${file} executable`);
             }
           }
         } catch (error: any) {
@@ -306,8 +305,9 @@ export class DeploymentProcessor {
       
       await this.addLog(deploymentId, `✅ Fixed permissions for ${fixedCount}/${binFiles.length} files`);
       
-      // Method 3: Verify react-router specifically
+      // Method 3: Verify react-router and vite specifically
       await this.verifyReactRouterPermissions(deploymentId, projectDir);
+      await this.verifyVitePermissions(deploymentId, projectDir);
       
     } catch (error: any) {
       await this.addLog(deploymentId, `❌ Permission fixing failed: ${error.message}`);
@@ -368,6 +368,49 @@ export class DeploymentProcessor {
       
     } catch (error: any) {
       await this.addLog(deploymentId, `❌ react-router verification failed: ${error.message}`);
+    }
+  }
+
+  private async verifyVitePermissions(deploymentId: string, projectDir: string): Promise<void> {
+    const vitePath = path.join(projectDir, 'node_modules', '.bin', 'vite');
+    try {
+      await this.addLog(deploymentId, '🔍 Verifying vite permissions...');
+      // Check if file exists
+      const exists = await fs.access(vitePath).then(() => true).catch(() => false);
+      if (!exists) {
+        await this.addLog(deploymentId, '❌ vite executable not found');
+        return;
+      }
+      // Check file stats
+      const stats = await fs.stat(vitePath);
+      const mode = stats.mode;
+      const isExecutable = !!(mode & parseInt('111', 8));
+      await this.addLog(deploymentId, `📊 vite mode: ${mode.toString(8)} (executable: ${isExecutable})`);
+      if (!isExecutable) {
+        await this.addLog(deploymentId, '🔧 vite not executable, attempting to fix...');
+        await fs.chmod(vitePath, 0o755);
+        const systemChmod = await this.runCommand(deploymentId, 'chmod', ['755', vitePath], projectDir);
+        // Verify the fix
+        const newStats = await fs.stat(vitePath);
+        const newIsExecutable = !!(newStats.mode & parseInt('111', 8));
+        if (newIsExecutable) {
+          await this.addLog(deploymentId, '✅ vite is now executable');
+        } else {
+          await this.addLog(deploymentId, '❌ Failed to make vite executable');
+        }
+      } else {
+        await this.addLog(deploymentId, '✅ vite is already executable');
+      }
+      // Test execution
+      const testResult = await this.runCommand(deploymentId, vitePath, ['--version'], projectDir);
+      if (testResult.success || testResult.output.toLowerCase().includes('vite')) {
+        await this.addLog(deploymentId, '✅ vite execution test passed');
+      } else {
+        await this.addLog(deploymentId, '❌ vite execution test failed');
+        await this.addLog(deploymentId, `Test output: ${testResult.output.substring(0, 200)}`);
+      }
+    } catch (error: any) {
+      await this.addLog(deploymentId, `❌ vite verification failed: ${error.message}`);
     }
   }
 
