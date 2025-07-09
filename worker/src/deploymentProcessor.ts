@@ -44,19 +44,22 @@ export class DeploymentProcessor {
       // Step 2: Run pre-deployment checks
       await this.preDeploymentChecks(id);
       
-      // Step 3: Install dependencies (new improved process)
+      // Step 3: Install dependencies
       await this.updateDeploymentStatus(id, 'installing');
-      await this.installDependenciesImproved(id);
+      await this.installDependencies(id);
       
-      // Step 4: Install SST platform
+      // Step 4: Fix executable permissions immediately after install
+      await this.fixExecutablePermissions(id);
+      
+      // Step 5: Install SST platform
       await this.updateDeploymentStatus(id, 'preparing');
       await this.installSSTPlat(id);
       
-      // Step 5: Run SST deployment
+      // Step 6: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 6: Complete
+      // Step 7: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -111,22 +114,12 @@ export class DeploymentProcessor {
         await this.addLog(deploymentId, '⚠️ No SST config file found - this might cause deployment issues');
       }
       
-      // Check for package.json and analyze build system
+      // Check for package.json
       if (files.includes('package.json')) {
         await this.addLog(deploymentId, '✅ package.json found');
         try {
           const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, 'package.json'), 'utf-8'));
           await this.addLog(deploymentId, `📦 Project name: ${packageJson.name || 'Unknown'}`);
-          
-          // Detect build system
-          const hasVite = packageJson.dependencies?.vite || packageJson.devDependencies?.vite;
-          const hasReactRouter = packageJson.dependencies?.['react-router'] || packageJson.dependencies?.['@remix-run/react'];
-          const buildScript = packageJson.scripts?.build;
-          
-          await this.addLog(deploymentId, `🔧 Build script: ${buildScript || 'None'}`);
-          await this.addLog(deploymentId, `🔧 Has Vite: ${hasVite ? 'Yes' : 'No'}`);
-          await this.addLog(deploymentId, `🔧 Has React Router: ${hasReactRouter ? 'Yes' : 'No'}`);
-          
           if (packageJson.dependencies?.sst) {
             await this.addLog(deploymentId, `📦 SST version: ${packageJson.dependencies.sst}`);
           }
@@ -147,10 +140,10 @@ export class DeploymentProcessor {
     }
   }
 
-  private async installDependenciesImproved(deploymentId: string): Promise<void> {
+  private async installDependencies(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
-    await this.addLog(deploymentId, '📦 Installing dependencies (improved process)...');
+    await this.addLog(deploymentId, '📦 Installing dependencies...');
 
     try {
       // Check which package manager to use
@@ -168,44 +161,90 @@ export class DeploymentProcessor {
         await this.addLog(deploymentId, '🧶 Using Yarn package manager');
       } else if (files.includes('package-lock.json')) {
         packageManager = 'npm';
-        // Use install instead of ci to avoid postinstall timing issues
-        installCommand = ['install', '--ignore-scripts'];
-        await this.addLog(deploymentId, '📦 Using npm package manager with --ignore-scripts');
+        installCommand = ['ci'];
+        await this.addLog(deploymentId, '📦 Using npm package manager');
       } else {
         await this.addLog(deploymentId, '📦 Using npm package manager (default)');
-        installCommand = ['install', '--ignore-scripts'];
       }
 
       await this.addLog(deploymentId, `🔧 Running: ${packageManager} ${installCommand.join(' ')}`);
 
-      // Phase 1: Install dependencies without scripts
-      const installResult = await this.runInstallCommand(deploymentId, packageManager, installCommand, projectDir);
-      
-      if (!installResult.success) {
-        // Fallback: try without --ignore-scripts
-        await this.addLog(deploymentId, '⚠️ Install with --ignore-scripts failed, trying standard install...');
-        const fallbackCommand = packageManager === 'npm' ? ['install'] : installCommand;
-        const fallbackResult = await this.runInstallCommand(deploymentId, packageManager, fallbackCommand, projectDir);
-        
-        if (!fallbackResult.success) {
-          throw new Error(`Dependency installation failed: ${fallbackResult.error}`);
-        }
-      }
+      return new Promise((resolve, reject) => {
+        const installEnv = {
+          ...process.env,
+          NODE_ENV: 'production',
+          PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
+          BUN_INSTALL: '/home/worker/.bun',
+          BUN_CONFIG_NO_CLEAR_TERMINAL: 'true'
+        };
 
-      // Phase 2: Fix binary permissions
-      await this.addLog(deploymentId, '🔧 Fixing binary permissions...');
-      await this.fixBinaryPermissions(deploymentId, projectDir);
+        const installProcess = spawn(packageManager, installCommand, {
+          cwd: projectDir,
+          stdio: 'pipe',
+          env: installEnv
+        });
 
-      // Phase 3: Run postinstall scripts if they were skipped
-      if (installCommand.includes('--ignore-scripts')) {
-        await this.addLog(deploymentId, '🔧 Running postinstall scripts...');
-        await this.runPostinstallScripts(deploymentId, projectDir);
-      }
+        // Capture stdout
+        installProcess.stdout?.on('data', (data) => {
+          const output = data.toString();
+          if (output.trim()) {
+            output.split('\n').forEach((line: string) => {
+              if (line.trim()) {
+                this.addLog(deploymentId, `[${packageManager.toUpperCase()}] ${line.trim()}`);
+              }
+            });
+          }
+        });
 
-      // Phase 4: Verify critical binaries
-      await this.verifyCriticalBinaries(deploymentId, projectDir);
-      
-      await this.addLog(deploymentId, '✅ Dependencies installed successfully!');
+        // Capture stderr (but filter out common warnings)
+        installProcess.stderr?.on('data', (data) => {
+          const output = data.toString();
+          if (output.trim()) {
+            // Filter out common harmless warnings
+            const harmlessPatterns = [
+              /^npm WARN/,
+              /^npm warn/,
+              /deprecated/i,
+              /ERESOLVE/,
+              /overriding peer dependency/i
+            ];
+            
+            const isHarmless = harmlessPatterns.some(pattern => pattern.test(output));
+            
+            if (!isHarmless) {
+              output.split('\n').forEach((line: string) => {
+                if (line.trim()) {
+                  this.addLog(deploymentId, `[${packageManager.toUpperCase()} WARN] ${line.trim()}`);
+                }
+              });
+            }
+          }
+        });
+
+        installProcess.on('close', async (code) => {
+          await this.addLog(deploymentId, `[${packageManager.toUpperCase()}] Process exited with code: ${code}`);
+          
+          if (code === 0) {
+            await this.addLog(deploymentId, '✅ Dependencies installed successfully!');
+            resolve();
+          } else {
+            const error = `Dependency installation failed with exit code ${code}`;
+            await this.addLog(deploymentId, `❌ ${error}`);
+            reject(new Error(error));
+          }
+        });
+
+        installProcess.on('error', async (error) => {
+          await this.addLog(deploymentId, `❌ Install process error: ${error.message}`);
+          reject(error);
+        });
+
+        // Timeout for dependency installation (10 minutes)
+        setTimeout(() => {
+          installProcess.kill('SIGKILL');
+          reject(new Error('Dependency installation timeout after 10 minutes'));
+        }, 10 * 60 * 1000);
+      });
 
     } catch (error: any) {
       await this.addLog(deploymentId, `❌ Dependency installation failed: ${error.message}`);
@@ -213,89 +252,11 @@ export class DeploymentProcessor {
     }
   }
 
-  private async runInstallCommand(deploymentId: string, packageManager: string, args: string[], cwd: string): Promise<{success: boolean, error?: string}> {
-    return new Promise((resolve) => {
-      const installEnv = {
-        ...process.env,
-        NODE_ENV: 'production',
-        PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
-        BUN_INSTALL: '/home/worker/.bun',
-        BUN_CONFIG_NO_CLEAR_TERMINAL: 'true',
-        // Add DNS configuration for better network reliability
-        NODE_OPTIONS: '--dns-result-order=ipv4first --max-old-space-size=2048'
-      };
-
-      const installProcess = spawn(packageManager, args, {
-        cwd,
-        stdio: 'pipe',
-        env: installEnv
-      });
-
-      let errorOutput = '';
-
-      // Capture stdout
-      installProcess.stdout?.on('data', (data) => {
-        const output = data.toString();
-        if (output.trim()) {
-          output.split('\n').forEach((line: string) => {
-            if (line.trim()) {
-              this.addLog(deploymentId, `[${packageManager.toUpperCase()}] ${line.trim()}`);
-            }
-          });
-        }
-      });
-
-      // Capture stderr
-      installProcess.stderr?.on('data', (data) => {
-        const output = data.toString();
-        errorOutput += output;
-        if (output.trim()) {
-          // Filter out harmless warnings
-          const harmlessPatterns = [
-            /^npm WARN/,
-            /^npm warn/,
-            /deprecated/i,
-            /ERESOLVE/,
-            /overriding peer dependency/i
-          ];
-          
-          const isHarmless = harmlessPatterns.some(pattern => pattern.test(output));
-          
-          if (!isHarmless) {
-            output.split('\n').forEach((line: string) => {
-              if (line.trim()) {
-                this.addLog(deploymentId, `[${packageManager.toUpperCase()} WARN] ${line.trim()}`);
-              }
-            });
-          }
-        }
-      });
-
-      installProcess.on('close', async (code) => {
-        await this.addLog(deploymentId, `[${packageManager.toUpperCase()}] Process exited with code: ${code}`);
-        
-        if (code === 0) {
-          resolve({ success: true });
-        } else {
-          resolve({ success: false, error: `Exit code ${code}: ${errorOutput}` });
-        }
-      });
-
-      installProcess.on('error', async (error) => {
-        await this.addLog(deploymentId, `❌ Install process error: ${error.message}`);
-        resolve({ success: false, error: error.message });
-      });
-
-      // Timeout for dependency installation (10 minutes)
-      setTimeout(() => {
-        installProcess.kill('SIGKILL');
-        resolve({ success: false, error: 'Installation timeout after 10 minutes' });
-      }, 10 * 60 * 1000);
-    });
-  }
-
-  private async fixBinaryPermissions(deploymentId: string, projectDir: string): Promise<void> {
+  private async fixExecutablePermissions(deploymentId: string): Promise<void> {
+    const projectDir = path.join(this.workspaceDir, deploymentId);
     const binDir = path.join(projectDir, 'node_modules', '.bin');
+    
+    await this.addLog(deploymentId, '🔧 Fixing executable permissions...');
     
     try {
       // Check if node_modules/.bin directory exists
@@ -306,9 +267,18 @@ export class DeploymentProcessor {
         return;
       }
 
-      // Method 1: Fix all files in .bin directory
+      // Method 1: Use chmod command to fix all files in .bin directory
       await this.addLog(deploymentId, '🔧 Setting executable permissions on all .bin files...');
       
+      const chmodResult = await this.runCommand(deploymentId, 'chmod', ['+x', `${binDir}/*`], projectDir);
+      
+      if (chmodResult.success) {
+        await this.addLog(deploymentId, '✅ chmod +x command completed successfully');
+      } else {
+        await this.addLog(deploymentId, '⚠️ chmod command failed, trying individual file approach...');
+      }
+
+      // Method 2: Fix individual files using Node.js fs.chmod
       const binFiles = await fs.readdir(binDir);
       await this.addLog(deploymentId, `📋 Found ${binFiles.length} files in .bin directory`);
       
@@ -319,10 +289,14 @@ export class DeploymentProcessor {
           const filePath = path.join(binDir, file);
           const stats = await fs.stat(filePath);
           
-          // Process both regular files and symlinks
-          if (stats.isFile() || stats.isSymbolicLink()) {
+          // Only process regular files, not symlinks
+          if (stats.isFile()) {
             await fs.chmod(filePath, 0o755);
             fixedCount++;
+            // Special logging for react-router and vite
+            if (file === 'react-router' || file === 'vite') {
+              await this.addLog(deploymentId, `✅ Fixed permissions for ${file} executable`);
+            }
           }
         } catch (error: any) {
           await this.addLog(deploymentId, `⚠️ Failed to fix ${file}: ${error.message}`);
@@ -331,92 +305,121 @@ export class DeploymentProcessor {
       
       await this.addLog(deploymentId, `✅ Fixed permissions for ${fixedCount}/${binFiles.length} files`);
       
+      // Method 3: Verify react-router and vite specifically
+      await this.verifyReactRouterPermissions(deploymentId, projectDir);
+      await this.verifyVitePermissions(deploymentId, projectDir);
+      
     } catch (error: any) {
       await this.addLog(deploymentId, `❌ Permission fixing failed: ${error.message}`);
       // Don't throw here - try to continue deployment
     }
   }
 
-  private async runPostinstallScripts(deploymentId: string, projectDir: string): Promise<void> {
-    try {
-      const result = await this.runCommand(deploymentId, 'npm', ['run-script', 'postinstall'], projectDir, 120000);
-      
-      if (result.success) {
-        await this.addLog(deploymentId, '✅ Postinstall scripts completed successfully');
-      } else {
-        await this.addLog(deploymentId, '⚠️ Postinstall scripts failed, but continuing deployment');
-      }
-      
-    } catch (error: any) {
-      await this.addLog(deploymentId, `⚠️ Postinstall scripts error: ${error.message}`);
-      // Don't throw - continue with deployment
-    }
-  }
-
-  private async verifyCriticalBinaries(deploymentId: string, projectDir: string): Promise<void> {
-    const criticalBinaries = ['vite', 'react-router'];
-    
-    for (const binary of criticalBinaries) {
-      await this.verifyBinary(deploymentId, projectDir, binary);
-    }
-  }
-
-  private async verifyBinary(deploymentId: string, projectDir: string, binaryName: string): Promise<void> {
-    const binaryPath = path.join(projectDir, 'node_modules', '.bin', binaryName);
+  private async verifyReactRouterPermissions(deploymentId: string, projectDir: string): Promise<void> {
+    const reactRouterPath = path.join(projectDir, 'node_modules', '.bin', 'react-router');
     
     try {
-      await this.addLog(deploymentId, `🔍 Verifying ${binaryName} binary...`);
+      await this.addLog(deploymentId, '🔍 Verifying react-router permissions...');
       
       // Check if file exists
-      const exists = await fs.access(binaryPath).then(() => true).catch(() => false);
+      const exists = await fs.access(reactRouterPath).then(() => true).catch(() => false);
       if (!exists) {
-        await this.addLog(deploymentId, `⚠️ ${binaryName} executable not found - will use npx fallback`);
+        await this.addLog(deploymentId, '❌ react-router executable not found');
         return;
       }
       
       // Check file stats
-      const stats = await fs.stat(binaryPath);
+      const stats = await fs.stat(reactRouterPath);
       const mode = stats.mode;
       const isExecutable = !!(mode & parseInt('111', 8));
       
-      await this.addLog(deploymentId, `📊 ${binaryName} mode: ${mode.toString(8)} (executable: ${isExecutable})`);
+      await this.addLog(deploymentId, `📊 react-router mode: ${mode.toString(8)} (executable: ${isExecutable})`);
       
       if (!isExecutable) {
-        await this.addLog(deploymentId, `🔧 ${binaryName} not executable, fixing...`);
-        await fs.chmod(binaryPath, 0o755);
+        await this.addLog(deploymentId, '🔧 react-router not executable, attempting to fix...');
+        
+        // Try multiple methods to make it executable
+        await fs.chmod(reactRouterPath, 0o755);
+        
+        // Also try using system chmod
+        const systemChmod = await this.runCommand(deploymentId, 'chmod', ['755', reactRouterPath], projectDir);
         
         // Verify the fix
-        const newStats = await fs.stat(binaryPath);
+        const newStats = await fs.stat(reactRouterPath);
         const newIsExecutable = !!(newStats.mode & parseInt('111', 8));
         
         if (newIsExecutable) {
-          await this.addLog(deploymentId, `✅ ${binaryName} is now executable`);
+          await this.addLog(deploymentId, '✅ react-router is now executable');
         } else {
-          await this.addLog(deploymentId, `❌ Failed to make ${binaryName} executable - will use npx fallback`);
+          await this.addLog(deploymentId, '❌ Failed to make react-router executable');
         }
       } else {
-        await this.addLog(deploymentId, `✅ ${binaryName} is already executable`);
+        await this.addLog(deploymentId, '✅ react-router is already executable');
       }
       
       // Test execution
-      const testResult = await this.runCommand(deploymentId, binaryPath, ['--version'], projectDir, 30000);
-      if (testResult.success || testResult.output.toLowerCase().includes(binaryName)) {
-        await this.addLog(deploymentId, `✅ ${binaryName} execution test passed`);
+      const testResult = await this.runCommand(deploymentId, reactRouterPath, ['--version'], projectDir);
+      if (testResult.success || testResult.output.includes('react-router')) {
+        await this.addLog(deploymentId, '✅ react-router execution test passed');
       } else {
-        await this.addLog(deploymentId, `⚠️ ${binaryName} execution test failed - will use npx fallback`);
+        await this.addLog(deploymentId, '❌ react-router execution test failed');
+        await this.addLog(deploymentId, `Test output: ${testResult.output.substring(0, 200)}`);
       }
       
     } catch (error: any) {
-      await this.addLog(deploymentId, `❌ ${binaryName} verification failed: ${error.message}`);
+      await this.addLog(deploymentId, `❌ react-router verification failed: ${error.message}`);
     }
   }
 
-  private async runCommand(deploymentId: string, command: string, args: string[], cwd: string, timeout: number = 30000): Promise<{success: boolean, output: string}> {
+  private async verifyVitePermissions(deploymentId: string, projectDir: string): Promise<void> {
+    const vitePath = path.join(projectDir, 'node_modules', '.bin', 'vite');
+    try {
+      await this.addLog(deploymentId, '🔍 Verifying vite permissions...');
+      // Check if file exists
+      const exists = await fs.access(vitePath).then(() => true).catch(() => false);
+      if (!exists) {
+        await this.addLog(deploymentId, '❌ vite executable not found');
+        return;
+      }
+      // Check file stats
+      const stats = await fs.stat(vitePath);
+      const mode = stats.mode;
+      const isExecutable = !!(mode & parseInt('111', 8));
+      await this.addLog(deploymentId, `📊 vite mode: ${mode.toString(8)} (executable: ${isExecutable})`);
+      if (!isExecutable) {
+        await this.addLog(deploymentId, '🔧 vite not executable, attempting to fix...');
+        await fs.chmod(vitePath, 0o755);
+        const systemChmod = await this.runCommand(deploymentId, 'chmod', ['755', vitePath], projectDir);
+        // Verify the fix
+        const newStats = await fs.stat(vitePath);
+        const newIsExecutable = !!(newStats.mode & parseInt('111', 8));
+        if (newIsExecutable) {
+          await this.addLog(deploymentId, '✅ vite is now executable');
+        } else {
+          await this.addLog(deploymentId, '❌ Failed to make vite executable');
+        }
+      } else {
+        await this.addLog(deploymentId, '✅ vite is already executable');
+      }
+      // Test execution
+      const testResult = await this.runCommand(deploymentId, vitePath, ['--version'], projectDir);
+      if (testResult.success || testResult.output.toLowerCase().includes('vite')) {
+        await this.addLog(deploymentId, '✅ vite execution test passed');
+      } else {
+        await this.addLog(deploymentId, '❌ vite execution test failed');
+        await this.addLog(deploymentId, `Test output: ${testResult.output.substring(0, 200)}`);
+      }
+    } catch (error: any) {
+      await this.addLog(deploymentId, `❌ vite verification failed: ${error.message}`);
+    }
+  }
+
+  private async runCommand(deploymentId: string, command: string, args: string[], cwd: string): Promise<{success: boolean, output: string}> {
     return new Promise((resolve) => {
       const process = spawn(command, args, {
         cwd,
         stdio: 'pipe',
-        shell: false
+        shell: true // Use shell to handle globbing
       });
 
       let output = '';
@@ -440,11 +443,11 @@ export class DeploymentProcessor {
         resolve({ success: false, output: error.message });
       });
 
-      // Timeout
+      // Timeout after 30 seconds
       setTimeout(() => {
         process.kill('SIGTERM');
         resolve({ success: false, output: 'Command timeout' });
-      }, timeout);
+      }, 30000);
     });
   }
 
@@ -460,8 +463,7 @@ export class DeploymentProcessor {
         PATH: `${projectDir}/node_modules/.bin:${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
         BUN_INSTALL: '/home/worker/.bun',
         BUN_CONFIG_NO_CLEAR_TERMINAL: 'true',
-        SST_DEBUG: '1',
-        NODE_OPTIONS: '--dns-result-order=ipv4first --max-old-space-size=2048'
+        SST_DEBUG: '1'
       };
 
       const installProcess = spawn('npx', ['sst', 'install'], {
@@ -539,7 +541,9 @@ export class DeploymentProcessor {
         BUN_CONFIG_SILENT: 'false',
         BUN_CONFIG_NO_PROGRESS: 'false',
         // Add DNS configuration for better network reliability
-        NODE_OPTIONS: '--dns-result-order=ipv4first --max-old-space-size=2048',
+        NODE_OPTIONS: '--dns-result-order=ipv4first',
+        // Increase Node.js memory limit
+        NODE_MAX_OLD_SPACE_SIZE: '2048',
         // Add Pulumi specific environment variables for better logging
         PULUMI_DEBUG_GRPC: '1',
         PULUMI_SKIP_UPDATE_CHECK: 'true'
