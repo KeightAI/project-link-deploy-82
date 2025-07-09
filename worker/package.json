@@ -1,29 +1,27 @@
+
 {
-  "name": "sst-react-lin",
-  "private": true,
-  "type": "module",
+  "name": "keight-deployment-worker",
+  "version": "1.0.0",
+  "description": "Background worker for processing SST deployments",
+  "main": "dist/index.js",
   "scripts": {
-    "build": "react-router build",
-    "dev": "react-router dev",
-    "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "clean": "rm -rf dist"
   },
+  "keywords": ["deployment", "sst", "worker"],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
-    "@react-router/node": "^7.5.3",
-    "@react-router/serve": "^7.5.3",
-    "isbot": "^5.1.27",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-router": "^7.5.3",
-    "sst": "3.17.8"
+    "@supabase/supabase-js": "^2.39.0",
+    "simple-git": "^3.22.0",
+    "dotenv": "^16.3.1",
+    "sst": "^3.17.6"
   },
   "devDependencies": {
-    "@react-router/dev": "^7.5.3",
-    "@tailwindcss/vite": "^4.1.4",
-    "@types/node": "^20",
-    "@types/react": "^19.1.2",
-    "@types/react-dom": "^19.1.2",
-    "tailwindcss": "^4.1.4",
-    "typescript": "^5.8.3"
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1"
   }
 }
