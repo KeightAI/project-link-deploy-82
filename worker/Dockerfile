@@ -8,6 +8,7 @@ WORKDIR /usr/src/app
 
 # Copy package files and install dependencies (including devDeps for build)
 COPY package*.json ./
+COPY tsconfig.json ./
 RUN npm ci
 
 # Copy the rest of the app
