@@ -3,35 +3,34 @@ FROM node:18
 # Install system deps
 RUN apt-get update && apt-get install -y git curl unzip && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
+# Set working directory
 WORKDIR /usr/src/app
 
-# Copy package files
+# Copy package files and install dependencies (including devDeps for build)
 COPY package*.json ./
-
-# Install all deps (include devDependencies for build tools)
 RUN npm ci
 
-# Copy entire app
+# Copy the rest of the app
 COPY . .
 
 # Add node_modules/.bin to PATH so react-router, vite, etc. work
 ENV PATH="/usr/src/app/node_modules/.bin:$PATH"
 
-# Create workspace directory
-RUN mkdir -p /tmp/deployments
+# Build the app (adjust this to your actual build command)
+RUN npm run build
 
-# Create a non-root user
-RUN groupadd -r nodejs && useradd -r -g nodejs worker
-RUN chown -R worker:nodejs /tmp/deployments /usr/src/app
+# Create workspace directory for deployments and setup non-root user
+RUN groupadd -r nodejs && useradd -r -g nodejs -m -d /home/worker worker \
+  && mkdir -p /tmp/deployments /tmp/npm-cache \
+  && chown -R worker:nodejs /usr/src/app /tmp/deployments /home/worker /tmp/npm-cache
 
+# Set environment variables and switch to non-root user
+ENV NODE_ENV=production
+ENV npm_config_cache=/tmp/npm-cache
 USER worker
 
-# ENV for Node runtime
-ENV NODE_ENV=production
-
-# Expose for healthchecks (if needed)
+# Expose port for healthchecks (if needed)
 EXPOSE 8080
 
-# Run your app (adjust if it's a worker or CLI)
+# Start your worker app
 CMD ["node", "dist/index.js"]
