@@ -100,6 +100,9 @@ export class DeploymentProcessor {
       const files = await fs.readdir(projectDir);
       await this.addLog(deploymentId, `📁 Project files: ${files.join(', ')}`);
       
+      // Check workspace permissions early
+      await this.checkWorkspacePermissions(deploymentId, projectDir);
+      
       // Check for SST config
       const sstConfigExists = files.some(file => 
         file === 'sst.config.ts' || file === 'sst.config.js' || file === 'sst.config.json'
@@ -140,10 +143,55 @@ export class DeploymentProcessor {
     }
   }
 
+  private async checkWorkspacePermissions(deploymentId: string, projectDir: string): Promise<void> {
+    await this.addLog(deploymentId, '🔐 Checking workspace permissions...');
+    
+    try {
+      // Check if we can write to the project directory
+      const testFile = path.join(projectDir, '.permission-test');
+      await fs.writeFile(testFile, 'test');
+      await fs.unlink(testFile);
+      await this.addLog(deploymentId, '✅ Project directory is writable');
+      
+      // Check if we can create subdirectories
+      const testDir = path.join(projectDir, '.test-dir');
+      await fs.mkdir(testDir);
+      await fs.rmdir(testDir);
+      await this.addLog(deploymentId, '✅ Can create subdirectories');
+      
+      // Check directory ownership
+      const stats = await fs.stat(projectDir);
+      const uid = process.getuid?.() || 0;
+      const gid = process.getgid?.() || 0;
+      await this.addLog(deploymentId, `🔍 Directory owner: ${stats.uid}, worker process: ${uid}`);
+      await this.addLog(deploymentId, `🔍 Directory group: ${stats.gid}, worker process: ${gid}`);
+      
+      if (stats.uid !== uid) {
+        await this.addLog(deploymentId, '⚠️ Directory not owned by worker process - may cause permission issues');
+      }
+      
+      // Check if we can execute commands in this directory
+      const result = await this.runCommand(deploymentId, 'ls', ['-la'], projectDir);
+      if (result.success) {
+        await this.addLog(deploymentId, '✅ Can execute commands in project directory');
+      } else {
+        await this.addLog(deploymentId, '❌ Cannot execute commands in project directory');
+        throw new Error('Insufficient permissions to execute commands');
+      }
+      
+    } catch (error: any) {
+      await this.addLog(deploymentId, `❌ Permission check failed: ${error.message}`);
+      throw new Error(`Workspace permission check failed: ${error.message}`);
+    }
+  }
+
   private async installDependenciesWithPermissionFix(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
     await this.addLog(deploymentId, '📦 Installing dependencies with permission fixes...');
+    
+    // Check permissions before installation
+    await this.preInstallPermissionCheck(deploymentId, projectDir);
 
     try {
       // Determine package manager
@@ -243,6 +291,47 @@ export class DeploymentProcessor {
     });
   }
 
+  private async preInstallPermissionCheck(deploymentId: string, projectDir: string): Promise<void> {
+    await this.addLog(deploymentId, '🔐 Pre-install permission check...');
+    
+    try {
+      // Check if node_modules directory exists and if we can access it
+      const nodeModulesDir = path.join(projectDir, 'node_modules');
+      const nodeModulesExists = await fs.access(nodeModulesDir).then(() => true).catch(() => false);
+      
+      if (nodeModulesExists) {
+        await this.addLog(deploymentId, '📁 node_modules directory already exists');
+        
+        // Try to create a test file in node_modules
+        const testFile = path.join(nodeModulesDir, '.permission-test');
+        try {
+          await fs.writeFile(testFile, 'test');
+          await fs.unlink(testFile);
+          await this.addLog(deploymentId, '✅ Can write to existing node_modules');
+        } catch (error) {
+          await this.addLog(deploymentId, '❌ Cannot write to existing node_modules - will try to fix');
+          await this.runCommand(deploymentId, 'chmod', ['-R', '755', nodeModulesDir], projectDir);
+        }
+      } else {
+        await this.addLog(deploymentId, '📁 node_modules directory does not exist yet');
+      }
+      
+      // Check if we can create .bin directory ahead of time
+      const futureBindDir = path.join(projectDir, 'node_modules', '.bin');
+      try {
+        await fs.mkdir(path.dirname(futureBindDir), { recursive: true });
+        await this.addLog(deploymentId, '✅ Can create node_modules structure');
+      } catch (error: any) {
+        await this.addLog(deploymentId, `❌ Cannot create node_modules structure: ${error.message}`);
+        throw new Error(`Pre-install permission check failed: ${error.message}`);
+      }
+      
+    } catch (error: any) {
+      await this.addLog(deploymentId, `❌ Pre-install permission check failed: ${error.message}`);
+      throw error;
+    }
+  }
+
   private async fixBinaryPermissions(deploymentId: string, projectDir: string): Promise<void> {
     const binDir = path.join(projectDir, 'node_modules', '.bin');
     
@@ -256,8 +345,20 @@ export class DeploymentProcessor {
         return;
       }
 
+      // Check if we can access the directory first
+      try {
+        await fs.readdir(binDir);
+        await this.addLog(deploymentId, '✅ Can access .bin directory');
+      } catch (error: any) {
+        await this.addLog(deploymentId, `❌ Cannot access .bin directory: ${error.message}`);
+        await this.runCommand(deploymentId, 'chmod', ['755', binDir], projectDir);
+      }
+
       // Method 1: Use chmod to make the entire .bin directory executable
-      await this.runCommand(deploymentId, 'chmod', ['-R', '755', binDir], projectDir);
+      const chmodResult = await this.runCommand(deploymentId, 'chmod', ['-R', '755', binDir], projectDir);
+      if (!chmodResult.success) {
+        await this.addLog(deploymentId, `⚠️ chmod command failed: ${chmodResult.output}`);
+      }
       
       // Method 2: Fix individual files
       const binFiles = await fs.readdir(binDir);
