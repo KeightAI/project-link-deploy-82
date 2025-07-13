@@ -1,3 +1,4 @@
+
 FROM node:18
 
 # Install system deps
@@ -19,23 +20,16 @@ RUN npm ci
 # Copy the rest of the app
 COPY . .
 
-# Fix permissions for node_modules/.bin so worker user can execute scripts
-RUN chmod -R 755 /usr/src/app/node_modules/.bin
-
-# Add node_modules/.bin to PATH so react-router, vite, etc. work
-ENV PATH="/usr/src/app/node_modules/.bin:$PATH"
-
-RUN mkdir -p /tmp/deployments
 # Create workspace directory for deployments and setup non-root user
 RUN groupadd -r nodejs && useradd -r -g nodejs -m -d /home/worker worker \
   && mkdir -p /tmp/deployments /tmp/npm-cache /home/worker/.bun \
   && chown -R worker:nodejs /usr/src/app /tmp/deployments /home/worker /tmp/npm-cache /home/worker/.bun \
-  && chmod -R 777 /tmp/deployments /home/worker
+  && chmod -R 755 /tmp/deployments /home/worker
 
-
-# Set environment variables and switch to non-root user
+# Set environment variables
 ENV NODE_ENV=production
 ENV npm_config_cache=/tmp/npm-cache
+ENV PATH="/usr/src/app/node_modules/.bin:/home/worker/.bun/bin:$PATH"
 
 # Switch to worker user
 USER worker

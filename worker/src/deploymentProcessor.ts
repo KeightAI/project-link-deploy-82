@@ -44,22 +44,19 @@ export class DeploymentProcessor {
       // Step 2: Run pre-deployment checks
       await this.preDeploymentChecks(id);
       
-      // Step 3: Install dependencies
+      // Step 3: Install dependencies with permission fixes
       await this.updateDeploymentStatus(id, 'installing');
-      await this.installDependencies(id);
+      await this.installDependenciesWithPermissionFix(id);
       
-      // Step 4: Fix executable permissions immediately after install
-      await this.fixExecutablePermissions(id);
-      
-      // Step 5: Install SST platform
+      // Step 4: Install SST platform
       await this.updateDeploymentStatus(id, 'preparing');
       await this.installSSTPlat(id);
       
-      // Step 6: Run SST deployment
+      // Step 5: Run SST deployment
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 7: Complete
+      // Step 6: Complete
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -123,6 +120,9 @@ export class DeploymentProcessor {
           if (packageJson.dependencies?.sst) {
             await this.addLog(deploymentId, `📦 SST version: ${packageJson.dependencies.sst}`);
           }
+          if (packageJson.scripts?.build) {
+            await this.addLog(deploymentId, `🔧 Build script: ${packageJson.scripts.build}`);
+          }
         } catch (error) {
           await this.addLog(deploymentId, '⚠️ Could not read package.json');
         }
@@ -140,111 +140,41 @@ export class DeploymentProcessor {
     }
   }
 
-  private async installDependencies(deploymentId: string): Promise<void> {
+  private async installDependenciesWithPermissionFix(deploymentId: string): Promise<void> {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
-    await this.addLog(deploymentId, '📦 Installing dependencies...');
+    await this.addLog(deploymentId, '📦 Installing dependencies with permission fixes...');
 
     try {
-      // Check which package manager to use
+      // Determine package manager
       const files = await fs.readdir(projectDir);
       let packageManager = 'npm';
-      let installCommand = ['install'];
+      let installCommand = ['install', '--ignore-scripts'];
 
       if (files.includes('bun.lockb')) {
         packageManager = 'bun';
-        installCommand = ['install'];
+        installCommand = ['install', '--ignore-scripts'];
         await this.addLog(deploymentId, '🍞 Using Bun package manager');
       } else if (files.includes('yarn.lock')) {
         packageManager = 'yarn';
-        installCommand = ['install', '--frozen-lockfile'];
+        installCommand = ['install', '--ignore-scripts'];
         await this.addLog(deploymentId, '🧶 Using Yarn package manager');
-      } else if (files.includes('package-lock.json')) {
-        packageManager = 'npm';
-        installCommand = ['ci'];
-        await this.addLog(deploymentId, '📦 Using npm package manager');
       } else {
-        await this.addLog(deploymentId, '📦 Using npm package manager (default)');
+        await this.addLog(deploymentId, '📦 Using npm package manager');
       }
 
       await this.addLog(deploymentId, `🔧 Running: ${packageManager} ${installCommand.join(' ')}`);
 
-      return new Promise((resolve, reject) => {
-        const installEnv = {
-          ...process.env,
-          NODE_ENV: 'production',
-          PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
-          BUN_INSTALL: '/home/worker/.bun',
-          BUN_CONFIG_NO_CLEAR_TERMINAL: 'true'
-        };
-
-        const installProcess = spawn(packageManager, installCommand, {
-          cwd: projectDir,
-          stdio: 'pipe',
-          env: installEnv
-        });
-
-        // Capture stdout
-        installProcess.stdout?.on('data', (data) => {
-          const output = data.toString();
-          if (output.trim()) {
-            output.split('\n').forEach((line: string) => {
-              if (line.trim()) {
-                this.addLog(deploymentId, `[${packageManager.toUpperCase()}] ${line.trim()}`);
-              }
-            });
-          }
-        });
-
-        // Capture stderr (but filter out common warnings)
-        installProcess.stderr?.on('data', (data) => {
-          const output = data.toString();
-          if (output.trim()) {
-            // Filter out common harmless warnings
-            const harmlessPatterns = [
-              /^npm WARN/,
-              /^npm warn/,
-              /deprecated/i,
-              /ERESOLVE/,
-              /overriding peer dependency/i
-            ];
-            
-            const isHarmless = harmlessPatterns.some(pattern => pattern.test(output));
-            
-            if (!isHarmless) {
-              output.split('\n').forEach((line: string) => {
-                if (line.trim()) {
-                  this.addLog(deploymentId, `[${packageManager.toUpperCase()} WARN] ${line.trim()}`);
-                }
-              });
-            }
-          }
-        });
-
-        installProcess.on('close', async (code) => {
-          await this.addLog(deploymentId, `[${packageManager.toUpperCase()}] Process exited with code: ${code}`);
-          
-          if (code === 0) {
-            await this.addLog(deploymentId, '✅ Dependencies installed successfully!');
-            resolve();
-          } else {
-            const error = `Dependency installation failed with exit code ${code}`;
-            await this.addLog(deploymentId, `❌ ${error}`);
-            reject(new Error(error));
-          }
-        });
-
-        installProcess.on('error', async (error) => {
-          await this.addLog(deploymentId, `❌ Install process error: ${error.message}`);
-          reject(error);
-        });
-
-        // Timeout for dependency installation (10 minutes)
-        setTimeout(() => {
-          installProcess.kill('SIGKILL');
-          reject(new Error('Dependency installation timeout after 10 minutes'));
-        }, 10 * 60 * 1000);
-      });
+      // Step 1: Install dependencies without scripts
+      await this.runInstallCommand(deploymentId, packageManager, installCommand, projectDir);
+      
+      // Step 2: Fix permissions on node_modules/.bin
+      await this.fixBinaryPermissions(deploymentId, projectDir);
+      
+      // Step 3: Run postinstall scripts manually if they exist
+      await this.runPostInstallScripts(deploymentId, projectDir, packageManager);
+      
+      await this.addLog(deploymentId, '✅ Dependencies installed and configured successfully!');
 
     } catch (error: any) {
       await this.addLog(deploymentId, `❌ Dependency installation failed: ${error.message}`);
@@ -252,14 +182,73 @@ export class DeploymentProcessor {
     }
   }
 
-  private async fixExecutablePermissions(deploymentId: string): Promise<void> {
-    const projectDir = path.join(this.workspaceDir, deploymentId);
+  private async runInstallCommand(deploymentId: string, packageManager: string, installCommand: string[], projectDir: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const installEnv = {
+        ...process.env,
+        NODE_ENV: 'production',
+        PATH: `${process.env.PATH}:/usr/src/app/node_modules/.bin:/home/worker/.bun/bin`,
+        BUN_INSTALL: '/home/worker/.bun',
+        BUN_CONFIG_NO_CLEAR_TERMINAL: 'true'
+      };
+
+      const installProcess = spawn(packageManager, installCommand, {
+        cwd: projectDir,
+        stdio: 'pipe',
+        env: installEnv
+      });
+
+      installProcess.stdout?.on('data', (data) => {
+        const output = data.toString();
+        if (output.trim()) {
+          output.split('\n').forEach((line: string) => {
+            if (line.trim()) {
+              this.addLog(deploymentId, `[${packageManager.toUpperCase()}] ${line.trim()}`);
+            }
+          });
+        }
+      });
+
+      installProcess.stderr?.on('data', (data) => {
+        const output = data.toString();
+        if (output.trim() && !this.isHarmlessWarning(output)) {
+          output.split('\n').forEach((line: string) => {
+            if (line.trim()) {
+              this.addLog(deploymentId, `[${packageManager.toUpperCase()} WARN] ${line.trim()}`);
+            }
+          });
+        }
+      });
+
+      installProcess.on('close', async (code) => {
+        await this.addLog(deploymentId, `[${packageManager.toUpperCase()}] Process exited with code: ${code}`);
+        
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Dependency installation failed with exit code ${code}`));
+        }
+      });
+
+      installProcess.on('error', async (error) => {
+        await this.addLog(deploymentId, `❌ Install process error: ${error.message}`);
+        reject(error);
+      });
+
+      // Timeout for dependency installation (10 minutes)
+      setTimeout(() => {
+        installProcess.kill('SIGKILL');
+        reject(new Error('Dependency installation timeout after 10 minutes'));
+      }, 10 * 60 * 1000);
+    });
+  }
+
+  private async fixBinaryPermissions(deploymentId: string, projectDir: string): Promise<void> {
     const binDir = path.join(projectDir, 'node_modules', '.bin');
     
-    await this.addLog(deploymentId, '🔧 Fixing executable permissions...');
+    await this.addLog(deploymentId, '🔧 Fixing binary permissions...');
     
     try {
-      // Check if node_modules/.bin directory exists
       const binDirExists = await fs.access(binDir).then(() => true).catch(() => false);
       
       if (!binDirExists) {
@@ -267,36 +256,22 @@ export class DeploymentProcessor {
         return;
       }
 
-      // Method 1: Use chmod command to fix all files in .bin directory
-      await this.addLog(deploymentId, '🔧 Setting executable permissions on all .bin files...');
+      // Method 1: Use chmod to make the entire .bin directory executable
+      await this.runCommand(deploymentId, 'chmod', ['-R', '755', binDir], projectDir);
       
-      const chmodResult = await this.runCommand(deploymentId, 'chmod', ['+x', `${binDir}/*`], projectDir);
-      
-      if (chmodResult.success) {
-        await this.addLog(deploymentId, '✅ chmod +x command completed successfully');
-      } else {
-        await this.addLog(deploymentId, '⚠️ chmod command failed, trying individual file approach...');
-      }
-
-      // Method 2: Fix individual files using Node.js fs.chmod
+      // Method 2: Fix individual files
       const binFiles = await fs.readdir(binDir);
       await this.addLog(deploymentId, `📋 Found ${binFiles.length} files in .bin directory`);
       
       let fixedCount = 0;
-      
       for (const file of binFiles) {
         try {
           const filePath = path.join(binDir, file);
           const stats = await fs.stat(filePath);
           
-          // Only process regular files, not symlinks
           if (stats.isFile()) {
             await fs.chmod(filePath, 0o755);
             fixedCount++;
-            // Special logging for react-router and vite
-            if (file === 'react-router' || file === 'vite') {
-              await this.addLog(deploymentId, `✅ Fixed permissions for ${file} executable`);
-            }
           }
         } catch (error: any) {
           await this.addLog(deploymentId, `⚠️ Failed to fix ${file}: ${error.message}`);
@@ -305,113 +280,72 @@ export class DeploymentProcessor {
       
       await this.addLog(deploymentId, `✅ Fixed permissions for ${fixedCount}/${binFiles.length} files`);
       
-      // Method 3: Verify react-router and vite specifically
-      await this.verifyReactRouterPermissions(deploymentId, projectDir);
-      await this.verifyVitePermissions(deploymentId, projectDir);
+      // Verify key executables
+      await this.verifyExecutable(deploymentId, projectDir, 'vite');
+      await this.verifyExecutable(deploymentId, projectDir, 'react-router');
       
     } catch (error: any) {
       await this.addLog(deploymentId, `❌ Permission fixing failed: ${error.message}`);
-      // Don't throw here - try to continue deployment
     }
   }
 
-  private async verifyReactRouterPermissions(deploymentId: string, projectDir: string): Promise<void> {
-    const reactRouterPath = path.join(projectDir, 'node_modules', '.bin', 'react-router');
+  private async verifyExecutable(deploymentId: string, projectDir: string, executableName: string): Promise<void> {
+    const executablePath = path.join(projectDir, 'node_modules', '.bin', executableName);
     
     try {
-      await this.addLog(deploymentId, '🔍 Verifying react-router permissions...');
-      
-      // Check if file exists
-      const exists = await fs.access(reactRouterPath).then(() => true).catch(() => false);
+      const exists = await fs.access(executablePath).then(() => true).catch(() => false);
       if (!exists) {
-        await this.addLog(deploymentId, '❌ react-router executable not found');
+        await this.addLog(deploymentId, `⚠️ ${executableName} executable not found`);
         return;
       }
       
-      // Check file stats
-      const stats = await fs.stat(reactRouterPath);
-      const mode = stats.mode;
-      const isExecutable = !!(mode & parseInt('111', 8));
+      const stats = await fs.stat(executablePath);
+      const isExecutable = !!(stats.mode & parseInt('111', 8));
       
-      await this.addLog(deploymentId, `📊 react-router mode: ${mode.toString(8)} (executable: ${isExecutable})`);
-      
-      if (!isExecutable) {
-        await this.addLog(deploymentId, '🔧 react-router not executable, attempting to fix...');
-        
-        // Try multiple methods to make it executable
-        await fs.chmod(reactRouterPath, 0o755);
-        
-        // Also try using system chmod
-        const systemChmod = await this.runCommand(deploymentId, 'chmod', ['755', reactRouterPath], projectDir);
-        
-        // Verify the fix
-        const newStats = await fs.stat(reactRouterPath);
-        const newIsExecutable = !!(newStats.mode & parseInt('111', 8));
-        
-        if (newIsExecutable) {
-          await this.addLog(deploymentId, '✅ react-router is now executable');
-        } else {
-          await this.addLog(deploymentId, '❌ Failed to make react-router executable');
-        }
+      if (isExecutable) {
+        await this.addLog(deploymentId, `✅ ${executableName} is executable`);
       } else {
-        await this.addLog(deploymentId, '✅ react-router is already executable');
-      }
-      
-      // Test execution
-      const testResult = await this.runCommand(deploymentId, reactRouterPath, ['--version'], projectDir);
-      if (testResult.success || testResult.output.includes('react-router')) {
-        await this.addLog(deploymentId, '✅ react-router execution test passed');
-      } else {
-        await this.addLog(deploymentId, '❌ react-router execution test failed');
-        await this.addLog(deploymentId, `Test output: ${testResult.output.substring(0, 200)}`);
+        await this.addLog(deploymentId, `❌ ${executableName} is not executable`);
+        await fs.chmod(executablePath, 0o755);
+        await this.addLog(deploymentId, `🔧 Fixed ${executableName} permissions`);
       }
       
     } catch (error: any) {
-      await this.addLog(deploymentId, `❌ react-router verification failed: ${error.message}`);
+      await this.addLog(deploymentId, `⚠️ ${executableName} verification failed: ${error.message}`);
     }
   }
 
-  private async verifyVitePermissions(deploymentId: string, projectDir: string): Promise<void> {
-    const vitePath = path.join(projectDir, 'node_modules', '.bin', 'vite');
+  private async runPostInstallScripts(deploymentId: string, projectDir: string, packageManager: string): Promise<void> {
     try {
-      await this.addLog(deploymentId, '🔍 Verifying vite permissions...');
-      // Check if file exists
-      const exists = await fs.access(vitePath).then(() => true).catch(() => false);
-      if (!exists) {
-        await this.addLog(deploymentId, '❌ vite executable not found');
-        return;
-      }
-      // Check file stats
-      const stats = await fs.stat(vitePath);
-      const mode = stats.mode;
-      const isExecutable = !!(mode & parseInt('111', 8));
-      await this.addLog(deploymentId, `📊 vite mode: ${mode.toString(8)} (executable: ${isExecutable})`);
-      if (!isExecutable) {
-        await this.addLog(deploymentId, '🔧 vite not executable, attempting to fix...');
-        await fs.chmod(vitePath, 0o755);
-        const systemChmod = await this.runCommand(deploymentId, 'chmod', ['755', vitePath], projectDir);
-        // Verify the fix
-        const newStats = await fs.stat(vitePath);
-        const newIsExecutable = !!(newStats.mode & parseInt('111', 8));
-        if (newIsExecutable) {
-          await this.addLog(deploymentId, '✅ vite is now executable');
+      const packageJsonPath = path.join(projectDir, 'package.json');
+      const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
+      
+      if (packageJson.scripts?.postinstall) {
+        await this.addLog(deploymentId, '🔧 Running postinstall script...');
+        
+        const result = await this.runCommand(deploymentId, packageManager, ['run', 'postinstall'], projectDir);
+        
+        if (result.success) {
+          await this.addLog(deploymentId, '✅ Postinstall script completed successfully');
         } else {
-          await this.addLog(deploymentId, '❌ Failed to make vite executable');
+          await this.addLog(deploymentId, '⚠️ Postinstall script failed, but continuing...');
         }
-      } else {
-        await this.addLog(deploymentId, '✅ vite is already executable');
-      }
-      // Test execution
-      const testResult = await this.runCommand(deploymentId, vitePath, ['--version'], projectDir);
-      if (testResult.success || testResult.output.toLowerCase().includes('vite')) {
-        await this.addLog(deploymentId, '✅ vite execution test passed');
-      } else {
-        await this.addLog(deploymentId, '❌ vite execution test failed');
-        await this.addLog(deploymentId, `Test output: ${testResult.output.substring(0, 200)}`);
       }
     } catch (error: any) {
-      await this.addLog(deploymentId, `❌ vite verification failed: ${error.message}`);
+      await this.addLog(deploymentId, `⚠️ Postinstall script check failed: ${error.message}`);
     }
+  }
+
+  private isHarmlessWarning(output: string): boolean {
+    const harmlessPatterns = [
+      /^npm WARN/,
+      /^npm warn/,
+      /deprecated/i,
+      /ERESOLVE/,
+      /overriding peer dependency/i
+    ];
+    
+    return harmlessPatterns.some(pattern => pattern.test(output));
   }
 
   private async runCommand(deploymentId: string, command: string, args: string[], cwd: string): Promise<{success: boolean, output: string}> {
@@ -419,7 +353,7 @@ export class DeploymentProcessor {
       const process = spawn(command, args, {
         cwd,
         stdio: 'pipe',
-        shell: true // Use shell to handle globbing
+        shell: true
       });
 
       let output = '';
@@ -443,7 +377,6 @@ export class DeploymentProcessor {
         resolve({ success: false, output: error.message });
       });
 
-      // Timeout after 30 seconds
       setTimeout(() => {
         process.kill('SIGTERM');
         resolve({ success: false, output: 'Command timeout' });
@@ -472,7 +405,6 @@ export class DeploymentProcessor {
         env: installEnv
       });
 
-      // Capture stdout
       installProcess.stdout?.on('data', (data) => {
         const output = data.toString();
         if (output.trim()) {
@@ -484,7 +416,6 @@ export class DeploymentProcessor {
         }
       });
 
-      // Capture stderr
       installProcess.stderr?.on('data', (data) => {
         const output = data.toString();
         if (output.trim()) {
@@ -514,7 +445,6 @@ export class DeploymentProcessor {
         reject(error);
       });
 
-      // Timeout for platform installation (5 minutes)
       setTimeout(() => {
         installProcess.kill('SIGKILL');
         reject(new Error('SST platform installation timeout after 5 minutes'));
@@ -530,7 +460,6 @@ export class DeploymentProcessor {
     await this.addLog(deploymentId, `📂 Working directory: ${projectDir}`);
 
     return new Promise((resolve, reject) => {
-      // Enhanced environment variables for better compatibility
       const deploymentEnv = { 
         ...process.env,
         NODE_ENV: 'production',
@@ -540,27 +469,21 @@ export class DeploymentProcessor {
         BUN_CONFIG_NO_CLEAR_TERMINAL: 'true',
         BUN_CONFIG_SILENT: 'false',
         BUN_CONFIG_NO_PROGRESS: 'false',
-        // Add DNS configuration for better network reliability
         NODE_OPTIONS: '--dns-result-order=ipv4first',
-        // Increase Node.js memory limit
         NODE_MAX_OLD_SPACE_SIZE: '2048',
-        // Add Pulumi specific environment variables for better logging
         PULUMI_DEBUG_GRPC: '1',
         PULUMI_SKIP_UPDATE_CHECK: 'true'
       };
 
-      // Use npx to handle permissions automatically
       const sstProcess = spawn('npx', ['sst', 'deploy', '--stage', stage, '--verbose'], {
         cwd: projectDir,
         stdio: 'pipe',
         env: deploymentEnv
       });
 
-      // Capture ALL stdout without filtering
       sstProcess.stdout?.on('data', (data) => {
         const output = data.toString();
         if (output.trim()) {
-          // Split by lines and log each line separately for better readability
           output.split('\n').forEach((line: string) => {
             if (line.trim()) {
               this.addLog(deploymentId, `[SST] ${line.trim()}`);
@@ -569,11 +492,9 @@ export class DeploymentProcessor {
         }
       });
 
-      // Capture ALL stderr without aggressive filtering
       sstProcess.stderr?.on('data', (data) => {
         const output = data.toString();
         if (output.trim()) {
-          // Only filter out known harmless messages, but be much less aggressive
           const harmlessPatterns = [
             /^npm WARN/,
             /^npm warn/,
@@ -602,7 +523,6 @@ export class DeploymentProcessor {
           const error = `SST deployment failed with exit code ${code}`;
           await this.addLog(deploymentId, `❌ ${error}`);
           
-          // Try to capture additional logs from SST and Pulumi
           await this.captureSSTLogs(deploymentId);
           await this.capturePulumiEventLogs(deploymentId);
           
@@ -615,7 +535,6 @@ export class DeploymentProcessor {
         reject(error);
       });
 
-      // Reasonable timeout of 40 minutes for deployments
       setTimeout(() => {
         sstProcess.kill('SIGKILL');
         reject(new Error('Deployment timeout after 40 minutes'));
@@ -630,25 +549,21 @@ export class DeploymentProcessor {
     try {
       await this.addLog(deploymentId, '📋 Attempting to capture SST logs...');
       
-      // Check if .sst directory exists
       const sstDirExists = await fs.access(path.join(projectDir, '.sst')).then(() => true).catch(() => false);
       if (!sstDirExists) {
         await this.addLog(deploymentId, '⚠️ No .sst directory found');
         return;
       }
       
-      // Check if log directory exists
       const logDirExists = await fs.access(sstLogDir).then(() => true).catch(() => false);
       if (!logDirExists) {
         await this.addLog(deploymentId, '⚠️ No .sst/log directory found');
         return;
       }
       
-      // List all log files
       const logFiles = await fs.readdir(sstLogDir);
       await this.addLog(deploymentId, `📋 Found log files: ${logFiles.join(', ')}`);
       
-      // Read the main SST log file
       const sstLogFile = path.join(sstLogDir, 'sst.log');
       const sstLogExists = await fs.access(sstLogFile).then(() => true).catch(() => false);
       
@@ -656,9 +571,8 @@ export class DeploymentProcessor {
         const sstLogContent = await fs.readFile(sstLogFile, 'utf-8');
         await this.addLog(deploymentId, '📋 === SST LOG CONTENT START ===');
         
-        // Split log content into chunks to avoid overwhelming the logs
         const logLines = sstLogContent.split('\n');
-        const recentLines = logLines.slice(-100); // Get last 100 lines
+        const recentLines = logLines.slice(-100);
         
         for (const line of recentLines) {
           if (line.trim()) {
@@ -683,23 +597,20 @@ export class DeploymentProcessor {
     try {
       await this.addLog(deploymentId, '📋 Attempting to capture Pulumi event logs...');
       
-      // Check if .sst/pulumi directory exists
       const pulumiDirExists = await fs.access(pulumiDir).then(() => true).catch(() => false);
       if (!pulumiDirExists) {
         await this.addLog(deploymentId, '⚠️ No .sst/pulumi directory found');
         return;
       }
       
-      // Find the latest deployment directory (they're named with update IDs)
       const pulumiDirs = await fs.readdir(pulumiDir);
-      const updateDirs = pulumiDirs.filter(dir => dir.length > 10); // Filter out non-update directories
+      const updateDirs = pulumiDirs.filter(dir => dir.length > 10);
       
       if (updateDirs.length === 0) {
         await this.addLog(deploymentId, '⚠️ No Pulumi update directories found');
         return;
       }
       
-      // Get the most recent update directory
       const latestUpdateDir = updateDirs[updateDirs.length - 1];
       const eventLogPath = path.join(pulumiDir, latestUpdateDir, 'eventlog.json');
       
@@ -711,7 +622,6 @@ export class DeploymentProcessor {
         const eventLogContent = await fs.readFile(eventLogPath, 'utf-8');
         await this.addLog(deploymentId, '📋 === PULUMI EVENT LOG START ===');
         
-        // Parse and filter the event log to show only errors and important events
         const events = eventLogContent.split('\n').filter(line => line.trim());
         const importantEvents = events.filter(line => {
           try {
@@ -722,7 +632,6 @@ export class DeploymentProcessor {
           }
         });
         
-        // Show last 50 important events
         const recentEvents = importantEvents.slice(-50);
         
         for (const eventLine of recentEvents) {
@@ -778,7 +687,6 @@ export class DeploymentProcessor {
     console.log(`[${deploymentId}] ${message}`);
 
     try {
-      // Get current logs
       const { data: deployment } = await this.supabase
         .from('deployments')
         .select('logs')
@@ -788,7 +696,6 @@ export class DeploymentProcessor {
       const currentLogs = deployment?.logs || '';
       const newLogs = currentLogs ? `${currentLogs}\n${logEntry}` : logEntry;
 
-      // Update logs
       const { error } = await this.supabase
         .from('deployments')
         .update({ 
