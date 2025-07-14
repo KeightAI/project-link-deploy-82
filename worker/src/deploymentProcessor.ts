@@ -34,6 +34,19 @@ export class DeploymentProcessor {
   async processDeployment(deployment: Deployment): Promise<void> {
     const { id, repo_url, branch, stage } = deployment;
     
+    // Set up signal handlers to mark deployment as failed if process is killed
+    const signalHandler = async (signal: string) => {
+      console.log(`Received ${signal}, marking deployment ${id} as failed`);
+      await this.updateDeploymentStatus(id, 'failed');
+      await this.addLog(id, `Deployment failed: Process killed by ${signal} ❌`);
+      await this.cleanup(id);
+      process.exit(1);
+    };
+    
+    process.on('SIGTERM', () => signalHandler('SIGTERM'));
+    process.on('SIGINT', () => signalHandler('SIGINT'));
+    process.on('SIGKILL', () => signalHandler('SIGKILL'));
+    
     try {
       // Update status to processing
       await this.updateDeploymentStatus(id, 'cloning');
@@ -69,6 +82,11 @@ export class DeploymentProcessor {
       await this.captureSSTLogs(id);
       await this.capturePulumiEventLogs(id);
     } finally {
+      // Remove signal handlers
+      process.removeAllListeners('SIGTERM');
+      process.removeAllListeners('SIGINT');
+      process.removeAllListeners('SIGKILL');
+      
       // Cleanup
       await this.cleanup(id);
     }
