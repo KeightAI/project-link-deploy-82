@@ -114,21 +114,10 @@ export class DeploymentProcessor {
         await this.addLog(deploymentId, '⚠️ No SST config file found - this might cause deployment issues');
       }
       
-      // Check for package.json
+      // Check for package.json and analyze build configuration
       if (files.includes('package.json')) {
         await this.addLog(deploymentId, '✅ package.json found');
-        try {
-          const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, 'package.json'), 'utf-8'));
-          await this.addLog(deploymentId, `📦 Project name: ${packageJson.name || 'Unknown'}`);
-          if (packageJson.dependencies?.sst) {
-            await this.addLog(deploymentId, `📦 SST version: ${packageJson.dependencies.sst}`);
-          }
-          if (packageJson.scripts?.build) {
-            await this.addLog(deploymentId, `🔧 Build script: ${packageJson.scripts.build}`);
-          }
-        } catch (error) {
-          await this.addLog(deploymentId, '⚠️ Could not read package.json');
-        }
+        await this.analyzeBuildConfiguration(deploymentId, projectDir);
       } else {
         await this.addLog(deploymentId, '⚠️ No package.json found');
       }
@@ -140,6 +129,68 @@ export class DeploymentProcessor {
       
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ Pre-deployment check failed: ${error.message}`);
+    }
+  }
+
+  private async analyzeBuildConfiguration(deploymentId: string, projectDir: string): Promise<void> {
+    try {
+      const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, 'package.json'), 'utf-8'));
+      await this.addLog(deploymentId, `📦 Project name: ${packageJson.name || 'Unknown'}`);
+      
+      // Check SST version
+      if (packageJson.dependencies?.sst) {
+        await this.addLog(deploymentId, `📦 SST version: ${packageJson.dependencies.sst}`);
+      }
+      
+      // Analyze React Router setup
+      const reactRouterDeps = {
+        v6: packageJson.dependencies?.['react-router-dom'],
+        v7Dev: packageJson.dependencies?.['@react-router/dev'] || packageJson.devDependencies?.['@react-router/dev'],
+        v7Runtime: packageJson.dependencies?.['@react-router/node'] || packageJson.dependencies?.['@react-router/cloudflare']
+      };
+      
+      if (reactRouterDeps.v7Dev || reactRouterDeps.v7Runtime) {
+        await this.addLog(deploymentId, '📦 Detected React Router v7 setup');
+        if (reactRouterDeps.v7Dev) {
+          await this.addLog(deploymentId, `📦 @react-router/dev: ${reactRouterDeps.v7Dev}`);
+        }
+      } else if (reactRouterDeps.v6) {
+        await this.addLog(deploymentId, `📦 Detected React Router v6: ${reactRouterDeps.v6}`);
+      }
+      
+      // Check build scripts
+      if (packageJson.scripts?.build) {
+        await this.addLog(deploymentId, `🔧 Build script: ${packageJson.scripts.build}`);
+        
+        // Analyze build command for potential issues
+        const buildScript = packageJson.scripts.build;
+        if (buildScript.includes('@react-router/cli')) {
+          await this.addLog(deploymentId, '⚠️ Build script uses @react-router/cli which may not exist');
+          await this.addLog(deploymentId, '🔧 Will attempt build command correction during SST setup');
+        } else if (buildScript.includes('react-router')) {
+          await this.addLog(deploymentId, '✅ Build script uses standard React Router build approach');
+        } else if (buildScript.includes('vite build')) {
+          await this.addLog(deploymentId, '✅ Build script uses Vite (standard approach)');
+        }
+      } else {
+        await this.addLog(deploymentId, '⚠️ No build script found in package.json');
+      }
+      
+      // Check for vite config
+      const viteConfigExists = await fs.access(path.join(projectDir, 'vite.config.ts'))
+        .then(() => true)
+        .catch(() => fs.access(path.join(projectDir, 'vite.config.js')))
+        .then(() => true)
+        .catch(() => false);
+      
+      if (viteConfigExists) {
+        await this.addLog(deploymentId, '✅ Vite config found');
+      } else {
+        await this.addLog(deploymentId, '⚠️ No Vite config found');
+      }
+      
+    } catch (error: any) {
+      await this.addLog(deploymentId, `⚠️ Could not analyze build configuration: ${error.message}`);
     }
   }
 
@@ -489,6 +540,9 @@ export class DeploymentProcessor {
     const projectDir = path.join(this.workspaceDir, deploymentId);
     
     await this.addLog(deploymentId, '🔧 Installing SST platform...');
+    
+    // Fix build configuration before SST install
+    await this.fixBuildConfiguration(deploymentId, projectDir);
 
     return new Promise((resolve, reject) => {
       const installEnv = {
@@ -810,6 +864,66 @@ export class DeploymentProcessor {
       }
     } catch (error) {
       console.error('Error adding log:', error);
+    }
+  }
+
+  private async fixBuildConfiguration(deploymentId: string, projectDir: string): Promise<void> {
+    await this.addLog(deploymentId, '🔧 Checking and fixing build configuration...');
+    
+    try {
+      const packageJsonPath = path.join(projectDir, 'package.json');
+      const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
+      
+      let modified = false;
+      
+      // Check if build script uses problematic @react-router/cli
+      if (packageJson.scripts?.build?.includes('@react-router/cli')) {
+        await this.addLog(deploymentId, '🔧 Fixing @react-router/cli build command...');
+        
+        // Check what React Router version is actually installed
+        const hasReactRouterDev = packageJson.dependencies?.['@react-router/dev'] || packageJson.devDependencies?.['@react-router/dev'];
+        const hasReactRouterDom = packageJson.dependencies?.['react-router-dom'];
+        
+        if (hasReactRouterDev) {
+          // Use @react-router/dev for v7
+          packageJson.scripts.build = packageJson.scripts.build.replace(
+            'npx @react-router/cli build',
+            'npx @react-router/dev build'
+          );
+          await this.addLog(deploymentId, '✅ Updated build script to use @react-router/dev');
+          modified = true;
+        } else if (hasReactRouterDom) {
+          // Fallback to vite build for v6
+          packageJson.scripts.build = 'vite build';
+          await this.addLog(deploymentId, '✅ Updated build script to use vite build');
+          modified = true;
+        } else {
+          // No React Router detected, use vite build
+          packageJson.scripts.build = 'vite build';
+          await this.addLog(deploymentId, '✅ Updated build script to use vite build (no React Router detected)');
+          modified = true;
+        }
+      }
+      
+      // Ensure there's always a build script
+      if (!packageJson.scripts?.build) {
+        if (!packageJson.scripts) packageJson.scripts = {};
+        packageJson.scripts.build = 'vite build';
+        await this.addLog(deploymentId, '✅ Added missing build script: vite build');
+        modified = true;
+      }
+      
+      // Write back the modified package.json
+      if (modified) {
+        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+        await this.addLog(deploymentId, '✅ package.json updated with corrected build configuration');
+      } else {
+        await this.addLog(deploymentId, '✅ Build configuration looks good, no changes needed');
+      }
+      
+    } catch (error: any) {
+      await this.addLog(deploymentId, `⚠️ Failed to fix build configuration: ${error.message}`);
+      await this.addLog(deploymentId, '⚠️ Continuing with original configuration...');
     }
   }
 
