@@ -926,10 +926,7 @@ export class DeploymentProcessor {
         
         if (hasReactRouterDev && nodeVersionInfo.isCompatible) {
           // Use @react-router/dev for v7 if Node.js is compatible
-          packageJson.scripts.build = packageJson.scripts.build.replace(
-            'npx @react-router/cli build',
-            'npx @react-router/dev build'
-          );
+          packageJson.scripts.build = 'npx @react-router/dev build';
           await this.addLog(deploymentId, '✅ Updated build script to use @react-router/dev');
           modified = true;
         } else if (hasReactRouterDev && !nodeVersionInfo.isCompatible) {
