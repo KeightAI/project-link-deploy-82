@@ -1,5 +1,5 @@
 
-FROM node:18
+FROM node:20
 
 # Install system deps
 RUN apt-get update && apt-get install -y git curl unzip && rm -rf /var/lib/apt/lists/*

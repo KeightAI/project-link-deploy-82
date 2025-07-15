@@ -885,6 +885,22 @@ export class DeploymentProcessor {
     }
   }
 
+  private async checkNodeVersion(deploymentId: string): Promise<{ version: string, isCompatible: boolean }> {
+    try {
+      const result = await this.runCommand(deploymentId, 'node', ['--version'], '/tmp');
+      const version = result.output.trim();
+      const majorVersion = parseInt(version.replace('v', '').split('.')[0]);
+      const isCompatible = majorVersion >= 20;
+      
+      await this.addLog(deploymentId, `📋 Node.js version: ${version} (Compatible with React Router v7: ${isCompatible})`);
+      
+      return { version, isCompatible };
+    } catch (error: any) {
+      await this.addLog(deploymentId, `⚠️ Could not determine Node.js version: ${error.message}`);
+      return { version: 'unknown', isCompatible: false };
+    }
+  }
+
   private async fixBuildConfiguration(deploymentId: string, projectDir: string): Promise<void> {
     await this.addLog(deploymentId, '🔧 Checking and fixing build configuration...');
     
@@ -894,21 +910,32 @@ export class DeploymentProcessor {
       
       let modified = false;
       
+      // Check Node.js version compatibility
+      const nodeVersionInfo = await this.checkNodeVersion(deploymentId);
+      
+      // Check what React Router version is actually installed
+      const hasReactRouterDev = packageJson.dependencies?.['@react-router/dev'] || packageJson.devDependencies?.['@react-router/dev'];
+      const hasReactRouterDom = packageJson.dependencies?.['react-router-dom'];
+      const reactRouterVersion = packageJson.dependencies?.['react-router-dom'] || packageJson.devDependencies?.['react-router-dom'];
+      
+      await this.addLog(deploymentId, `📋 React Router detection: dev=${!!hasReactRouterDev}, dom=${!!hasReactRouterDom}, version=${reactRouterVersion}`);
+      
       // Check if build script uses problematic @react-router/cli
       if (packageJson.scripts?.build?.includes('@react-router/cli')) {
         await this.addLog(deploymentId, '🔧 Fixing @react-router/cli build command...');
         
-        // Check what React Router version is actually installed
-        const hasReactRouterDev = packageJson.dependencies?.['@react-router/dev'] || packageJson.devDependencies?.['@react-router/dev'];
-        const hasReactRouterDom = packageJson.dependencies?.['react-router-dom'];
-        
-        if (hasReactRouterDev) {
-          // Use @react-router/dev for v7
+        if (hasReactRouterDev && nodeVersionInfo.isCompatible) {
+          // Use @react-router/dev for v7 if Node.js is compatible
           packageJson.scripts.build = packageJson.scripts.build.replace(
             'npx @react-router/cli build',
             'npx @react-router/dev build'
           );
           await this.addLog(deploymentId, '✅ Updated build script to use @react-router/dev');
+          modified = true;
+        } else if (hasReactRouterDev && !nodeVersionInfo.isCompatible) {
+          // Fallback to vite build if Node.js is not compatible with React Router v7
+          packageJson.scripts.build = 'vite build';
+          await this.addLog(deploymentId, '⚠️ Node.js version incompatible with React Router v7, using vite build fallback');
           modified = true;
         } else if (hasReactRouterDom) {
           // Fallback to vite build for v6
@@ -921,6 +948,13 @@ export class DeploymentProcessor {
           await this.addLog(deploymentId, '✅ Updated build script to use vite build (no React Router detected)');
           modified = true;
         }
+      }
+      
+      // Handle React Router v7 build command with Node.js compatibility check
+      if (packageJson.scripts?.build?.includes('@react-router/dev') && !nodeVersionInfo.isCompatible) {
+        await this.addLog(deploymentId, '⚠️ React Router v7 requires Node.js >=20, falling back to vite build');
+        packageJson.scripts.build = 'vite build';
+        modified = true;
       }
       
       // Ensure there's always a build script
