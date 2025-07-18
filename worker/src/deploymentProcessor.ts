@@ -263,8 +263,10 @@ export class DeploymentProcessor {
     await this.preInstallPermissionCheck(deploymentId, projectDir);
 
     try {
-      // Determine package manager
+      // Determine package manager and check for React Router v7
       const files = await fs.readdir(projectDir);
+      const hasReactRouterV7 = await this.detectReactRouterV7(deploymentId, projectDir);
+      
       let packageManager = 'npm';
       let installCommand = ['install', '--ignore-scripts'];
 
@@ -278,6 +280,12 @@ export class DeploymentProcessor {
         await this.addLog(deploymentId, '🧶 Using Yarn package manager');
       } else {
         await this.addLog(deploymentId, '📦 Using npm package manager');
+        
+        // Add --legacy-peer-deps for React Router v7 projects to handle version conflicts
+        if (hasReactRouterV7) {
+          installCommand.push('--legacy-peer-deps');
+          await this.addLog(deploymentId, '🔧 Adding --legacy-peer-deps flag for React Router v7 compatibility');
+        }
       }
 
       await this.addLog(deploymentId, `🔧 Running: ${packageManager} ${installCommand.join(' ')}`);
@@ -296,6 +304,30 @@ export class DeploymentProcessor {
     } catch (error: any) {
       await this.addLog(deploymentId, `❌ Dependency installation failed: ${error.message}`);
       throw error;
+    }
+  }
+
+  private async detectReactRouterV7(deploymentId: string, projectDir: string): Promise<boolean> {
+    try {
+      const packageJsonPath = path.join(projectDir, 'package.json');
+      const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
+      
+      // Check for React Router v7 packages
+      const hasReactRouterDev = packageJson.dependencies?.['@react-router/dev'] || packageJson.devDependencies?.['@react-router/dev'];
+      const hasReactRouterNode = packageJson.dependencies?.['@react-router/node'];
+      const hasReactRouterServe = packageJson.dependencies?.['@react-router/serve'];
+      const hasReactRouter7 = packageJson.dependencies?.['react-router'] && packageJson.dependencies['react-router'].startsWith('^7');
+      
+      const isReactRouterV7 = !!(hasReactRouterDev || hasReactRouterNode || hasReactRouterServe || hasReactRouter7);
+      
+      if (isReactRouterV7) {
+        await this.addLog(deploymentId, '📋 Detected React Router v7 project');
+      }
+      
+      return isReactRouterV7;
+    } catch (error: any) {
+      await this.addLog(deploymentId, `⚠️ Could not detect React Router version: ${error.message}`);
+      return false;
     }
   }
 
