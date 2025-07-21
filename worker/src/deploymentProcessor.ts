@@ -1049,6 +1049,9 @@ export class DeploymentProcessor {
         };
         
         for (const [script, content] of Object.entries(packageJson.scripts)) {
+          // Ensure content is a string
+          if (typeof content !== 'string') continue;
+          
           for (const [oldCmd, newCmd] of Object.entries(scriptFixes)) {
             if (content.includes(oldCmd)) {
               packageJson.scripts[script] = content.replace(oldCmd, newCmd);
