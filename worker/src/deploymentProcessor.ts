@@ -57,7 +57,10 @@ export class DeploymentProcessor {
       // Step 2: Run pre-deployment checks
       await this.preDeploymentChecks(id);
       
-      // Step 3: Install dependencies with permission fixes
+      // Step 3: Fix React Router v7 package.json issues
+      await this.fixReactRouterV7Commands(id);
+      
+      // Step 4: Install dependencies with permission fixes
       await this.updateDeploymentStatus(id, 'installing');
       await this.installDependenciesWithPermissionFix(id);
       
@@ -1005,6 +1008,63 @@ export class DeploymentProcessor {
     } catch (error: any) {
       await this.addLog(deploymentId, `⚠️ Failed to fix build configuration: ${error.message}`);
       await this.addLog(deploymentId, '⚠️ Continuing with original configuration...');
+    }
+  }
+
+  private async fixReactRouterV7Commands(deploymentId: string): Promise<void> {
+    const projectDir = path.join(this.workspaceDir, deploymentId);
+    
+    try {
+      const packageJsonPath = path.join(projectDir, 'package.json');
+      const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
+      
+      let modified = false;
+      
+      // Remove @react-router/cli package as it doesn't exist
+      if (packageJson.dependencies?.['@react-router/cli']) {
+        delete packageJson.dependencies['@react-router/cli'];
+        modified = true;
+        await this.addLog(deploymentId, '🗑️ Removed non-existent @react-router/cli from dependencies');
+      }
+      
+      if (packageJson.devDependencies?.['@react-router/cli']) {
+        delete packageJson.devDependencies['@react-router/cli'];
+        modified = true;
+        await this.addLog(deploymentId, '🗑️ Removed non-existent @react-router/cli from devDependencies');
+      }
+      
+      // Fix scripts that use React Router v7 CLI
+      if (packageJson.scripts) {
+        const scriptFixes = {
+          'npx @react-router/cli build': 'npx @react-router/dev build',
+          '@react-router/cli build': '@react-router/dev build',
+          'react-router build': '@react-router/dev build',
+          'npx @react-router/cli dev': 'npx @react-router/dev dev',
+          '@react-router/cli dev': '@react-router/dev dev',
+          'react-router dev': '@react-router/dev dev',
+          'npx @react-router/cli typegen': 'npx @react-router/dev typegen',
+          '@react-router/cli typegen': '@react-router/dev typegen',
+          'react-router typegen': '@react-router/dev typegen',
+          'react-router-serve': '@react-router/serve'
+        };
+        
+        for (const [script, content] of Object.entries(packageJson.scripts)) {
+          for (const [oldCmd, newCmd] of Object.entries(scriptFixes)) {
+            if (content.includes(oldCmd)) {
+              packageJson.scripts[script] = content.replace(oldCmd, newCmd);
+              modified = true;
+              await this.addLog(deploymentId, `🔧 Fixed script "${script}": ${oldCmd} → ${newCmd}`);
+            }
+          }
+        }
+      }
+      
+      if (modified) {
+        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+        await this.addLog(deploymentId, '✅ Updated package.json with React Router v7 fixes');
+      }
+    } catch (error: any) {
+      await this.addLog(deploymentId, `⚠️ Could not fix React Router v7 commands: ${error.message}`);
     }
   }
 
