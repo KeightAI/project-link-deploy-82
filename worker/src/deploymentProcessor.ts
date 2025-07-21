@@ -48,8 +48,7 @@ export class DeploymentProcessor {
       // Step 2: Run pre-deployment checks
       await this.preDeploymentChecks(id);
       
-      // Step 3: Fix React Router v7 package.json issues
-      await this.fixReactRouterV7Commands(id);
+      // Step 3: Project setup complete
       
       // Step 4: Install dependencies with permission fixes
       await this.updateDeploymentStatus(id, 'installing');
@@ -636,8 +635,7 @@ export class DeploymentProcessor {
     
     await this.addLog(deploymentId, '🔧 Installing SST platform...');
     
-    // Fix build configuration before SST install
-    await this.fixBuildConfiguration(deploymentId, projectDir);
+    // Project ready for SST install
 
     return new Promise((resolve, reject) => {
       const installEnv = {
