@@ -17,6 +17,7 @@ interface Deployment {
 export class DeploymentProcessor {
   private supabase: SupabaseClient;
   private workspaceDir = '/tmp/deployments';
+  private signalHandlers: Map<string, () => void> = new Map();
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase;
@@ -34,18 +35,8 @@ export class DeploymentProcessor {
   async processDeployment(deployment: Deployment): Promise<void> {
     const { id, repo_url, branch, stage } = deployment;
     
-    // Set up signal handlers to mark deployment as failed if process is killed
-    const signalHandler = async (signal: string) => {
-      console.log(`Received ${signal}, marking deployment ${id} as failed`);
-      await this.updateDeploymentStatus(id, 'failed');
-      await this.addLog(id, `Deployment failed: Process killed by ${signal} ❌`);
-      await this.cleanup(id);
-      process.exit(1);
-    };
-    
-    process.on('SIGTERM', () => signalHandler('SIGTERM'));
-    process.on('SIGINT', () => signalHandler('SIGINT'));
-    process.on('SIGKILL', () => signalHandler('SIGKILL'));
+    // Set up signal handlers with proper error handling
+    await this.setupSignalHandlers(id);
     
     try {
       // Update status to processing
@@ -85,13 +76,64 @@ export class DeploymentProcessor {
       await this.captureSSTLogs(id);
       await this.capturePulumiEventLogs(id);
     } finally {
-      // Remove signal handlers
-      process.removeAllListeners('SIGTERM');
-      process.removeAllListeners('SIGINT');
-      process.removeAllListeners('SIGKILL');
+      // Cleanup signal handlers
+      await this.cleanupSignalHandlers();
       
-      // Cleanup
+      // Cleanup workspace
       await this.cleanup(id);
+    }
+  }
+
+  private async setupSignalHandlers(deploymentId: string): Promise<void> {
+    try {
+      // Clear any existing handlers first
+      await this.cleanupSignalHandlers();
+      
+      // Define the signal handler function
+      const signalHandler = async (signal: string) => {
+        console.log(`Received ${signal}, marking deployment ${deploymentId} as failed`);
+        try {
+          await this.updateDeploymentStatus(deploymentId, 'failed');
+          await this.addLog(deploymentId, `Deployment failed: Process killed by ${signal} ❌`);
+          await this.cleanup(deploymentId);
+        } catch (error) {
+          console.error(`Error handling ${signal}:`, error);
+        }
+        process.exit(1);
+      };
+      
+      // Only handle catchable signals (SIGKILL cannot be caught)
+      const signalsToHandle = ['SIGTERM', 'SIGINT'];
+      
+      for (const signal of signalsToHandle) {
+        try {
+          const handler = () => signalHandler(signal);
+          this.signalHandlers.set(signal, handler);
+          process.on(signal, handler);
+        } catch (error) {
+          console.warn(`Failed to set up ${signal} handler:`, error);
+          // Continue with other signals even if one fails
+        }
+      }
+      
+    } catch (error) {
+      console.warn('Failed to set up signal handlers:', error);
+      // Don't throw here - signal handling is a nice-to-have, not critical
+    }
+  }
+
+  private async cleanupSignalHandlers(): Promise<void> {
+    try {
+      for (const [signal, handler] of this.signalHandlers.entries()) {
+        try {
+          process.removeListener(signal, handler);
+        } catch (error) {
+          console.warn(`Failed to remove ${signal} listener:`, error);
+        }
+      }
+      this.signalHandlers.clear();
+    } catch (error) {
+      console.warn('Failed to cleanup signal handlers:', error);
     }
   }
 
