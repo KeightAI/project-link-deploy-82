@@ -49,7 +49,7 @@ const Dashboard = () => {
     try {
       const { data, error } = await supabase
         .from('projects')
-        .select('id, name, description, github_repo_url, github_repo_id, branch_name, is_deployed, deployed_url, created_at')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;

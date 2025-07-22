@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           branch: string | null
           created_at: string | null
+          deployed_url: string | null
           id: string
           logs: string | null
           repo_url: string
@@ -29,6 +30,7 @@ export type Database = {
         Insert: {
           branch?: string | null
           created_at?: string | null
+          deployed_url?: string | null
           id?: string
           logs?: string | null
           repo_url: string
@@ -40,6 +42,7 @@ export type Database = {
         Update: {
           branch?: string | null
           created_at?: string | null
+          deployed_url?: string | null
           id?: string
           logs?: string | null
           repo_url?: string
@@ -75,6 +78,7 @@ export type Database = {
         Row: {
           branch_name: string | null
           created_at: string
+          deployed_url: string | null
           description: string | null
           github_repo_id: string | null
           github_repo_url: string | null
@@ -87,6 +91,7 @@ export type Database = {
         Insert: {
           branch_name?: string | null
           created_at?: string
+          deployed_url?: string | null
           description?: string | null
           github_repo_id?: string | null
           github_repo_url?: string | null
@@ -99,6 +104,7 @@ export type Database = {
         Update: {
           branch_name?: string | null
           created_at?: string
+          deployed_url?: string | null
           description?: string | null
           github_repo_id?: string | null
           github_repo_url?: string | null
