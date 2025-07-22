@@ -12,6 +12,7 @@ interface Project {
   github_repo_id: string | null;
   branch_name: string | null;
   is_deployed: boolean | null;
+  deployed_url: string | null;
   created_at: string;
 }
 
@@ -121,6 +122,17 @@ const ProjectCard = ({ project, onEdit, onDelete, onDeploy, deploymentStatus }: 
             >
               <ExternalLink className="h-4 w-4" />
               <span>View Repo</span>
+            </a>
+          )}
+          {project.deployed_url && (
+            <a
+              href={project.deployed_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-900 flex items-center gap-1 text-sm font-medium"
+            >
+              <ExternalLink className="h-4 w-4" />
+              <span>Live App</span>
             </a>
           )}
         </div>

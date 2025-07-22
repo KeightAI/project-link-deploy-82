@@ -16,6 +16,7 @@ interface Project {
   github_repo_id: string | null;
   branch_name: string | null;
   is_deployed: boolean | null;
+  deployed_url: string | null;
   created_at: string;
 }
 
@@ -48,7 +49,7 @@ const Dashboard = () => {
     try {
       const { data, error } = await supabase
         .from('projects')
-        .select('*')
+        .select('id, name, description, github_repo_url, github_repo_id, branch_name, is_deployed, deployed_url, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;

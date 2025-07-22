@@ -62,7 +62,8 @@ export class DeploymentProcessor {
       await this.updateDeploymentStatus(id, 'deploying');
       await this.runSSTDeploy(id, stage || 'production');
       
-      // Step 6: Complete
+      // Step 6: Extract deployed URL and complete
+      await this.extractAndUpdateDeployedUrl(id);
       await this.updateDeploymentStatus(id, 'completed');
       await this.addLog(id, 'Deployment completed successfully! ✅');
       
@@ -925,6 +926,51 @@ export class DeploymentProcessor {
       }
     } catch (error) {
       console.error('Error updating deployment status:', error);
+    }
+  }
+
+  private async extractAndUpdateDeployedUrl(deploymentId: string): Promise<void> {
+    try {
+      // Get the current logs to extract the deployed URL
+      const { data: deployment } = await this.supabase
+        .from('deployments')
+        .select('logs, repo_url')
+        .eq('id', deploymentId)
+        .single();
+
+      if (!deployment?.logs) {
+        await this.addLog(deploymentId, '⚠️ No logs found to extract deployed URL');
+        return;
+      }
+
+      // Extract URL from logs using regex to match pattern like "MyWeb: https://..."
+      const urlRegex = /\[SST\]\s+\w+:\s+(https?:\/\/[^\s]+)/g;
+      const matches = [...deployment.logs.matchAll(urlRegex)];
+      
+      if (matches.length > 0) {
+        const deployedUrl = matches[matches.length - 1][1]; // Get the last URL found
+        await this.addLog(deploymentId, `🔗 Extracted deployed URL: ${deployedUrl}`);
+        
+        // Update the projects table with the deployed URL
+        const { error: projectError } = await this.supabase
+          .from('projects')
+          .update({ 
+            deployed_url: deployedUrl,
+            is_deployed: true,
+            updated_at: new Date().toISOString()
+          })
+          .eq('github_repo_url', deployment.repo_url);
+
+        if (projectError) {
+          await this.addLog(deploymentId, `❌ Failed to update project with deployed URL: ${projectError.message}`);
+        } else {
+          await this.addLog(deploymentId, '✅ Project updated with deployed URL');
+        }
+      } else {
+        await this.addLog(deploymentId, '⚠️ No deployed URL found in logs');
+      }
+    } catch (error: any) {
+      await this.addLog(deploymentId, `❌ Failed to extract deployed URL: ${error.message}`);
     }
   }
 
