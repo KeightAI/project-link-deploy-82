@@ -45,15 +45,37 @@ const ProjectCard = ({ project, onEdit, onDelete, onDeploy, deploymentStatus }: 
   const getDeploymentStatusBadge = () => {
     if (!deploymentStatus) return null;
 
+    // Map all statuses to simplified ones
+    let simplifiedStatus = deploymentStatus;
+    if (['cloning', 'installing', 'preparing', 'deploying'].includes(deploymentStatus)) {
+      simplifiedStatus = 'deploying';
+    }
+
     const statusConfig = {
-      cloning: { color: 'bg-yellow-100 text-yellow-800', emoji: '⏳', label: 'Cloning' },
       deploying: { color: 'bg-blue-100 text-blue-800', emoji: '🚀', label: 'Deploying' },
       completed: { color: 'bg-green-100 text-green-800', emoji: '✅', label: 'Completed' },
       failed: { color: 'bg-red-100 text-red-800', emoji: '❌', label: 'Failed' }
     };
 
-    const config = statusConfig[deploymentStatus as keyof typeof statusConfig];
+    const config = statusConfig[simplifiedStatus as keyof typeof statusConfig];
     if (!config) return null;
+
+    // Make completed status clickable if deployed_url exists
+    if (simplifiedStatus === 'completed' && project.deployed_url) {
+      return (
+        <a
+          href={project.deployed_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block"
+        >
+          <Badge variant="secondary" className={`${config.color} flex items-center gap-1 text-xs hover:opacity-80 cursor-pointer transition-opacity`}>
+            <span>{config.emoji}</span>
+            {config.label}
+          </Badge>
+        </a>
+      );
+    }
 
     return (
       <Badge variant="secondary" className={`${config.color} flex items-center gap-1 text-xs`}>

@@ -944,8 +944,11 @@ export class DeploymentProcessor {
       }
 
       // Extract URL from logs using regex to match pattern like "MyWeb: https://..."
+      // Updated regex to match the format: [SST] MyWeb: https://d3ovomhyw0sbrh.cloudfront.net
       const urlRegex = /\[SST\]\s+\w+:\s+(https?:\/\/[^\s]+)/g;
       const matches = [...deployment.logs.matchAll(urlRegex)];
+      
+      await this.addLog(deploymentId, `🔍 Looking for deployed URL in logs...`);
       
       if (matches.length > 0) {
         const deployedUrl = matches[matches.length - 1][1]; // Get the last URL found
