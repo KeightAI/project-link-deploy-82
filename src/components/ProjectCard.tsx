@@ -60,23 +60,6 @@ const ProjectCard = ({ project, onEdit, onDelete, onDeploy, deploymentStatus }: 
     const config = statusConfig[simplifiedStatus as keyof typeof statusConfig];
     if (!config) return null;
 
-    // Make completed status clickable if deployed_url exists
-    if (simplifiedStatus === 'completed' && project.deployed_url) {
-      return (
-        <a
-          href={project.deployed_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-block"
-        >
-          <Badge variant="secondary" className={`${config.color} flex items-center gap-1 text-xs hover:opacity-80 cursor-pointer transition-opacity`}>
-            <span>{config.emoji}</span>
-            {config.label}
-          </Badge>
-        </a>
-      );
-    }
-
     return (
       <Badge variant="secondary" className={`${config.color} flex items-center gap-1 text-xs`}>
         <span>{config.emoji}</span>
@@ -104,13 +87,16 @@ const ProjectCard = ({ project, onEdit, onDelete, onDeploy, deploymentStatus }: 
               </Badge>
             )}
           </div>
-          <div className="flex gap-1">
-            <Button variant="ghost" size="sm" onClick={() => onEdit(project)}>
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => onDelete(project.id)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
+          <div className="flex items-center gap-2">
+            {getDeploymentStatusBadge()}
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" onClick={() => onEdit(project)}>
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onDelete(project.id)}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
         
@@ -124,7 +110,6 @@ const ProjectCard = ({ project, onEdit, onDelete, onDeploy, deploymentStatus }: 
               Branch: {project.branch_name}
             </Badge>
           )}
-          {getDeploymentStatusBadge()}
         </div>
       </CardHeader>
       
@@ -154,7 +139,7 @@ const ProjectCard = ({ project, onEdit, onDelete, onDeploy, deploymentStatus }: 
               className="text-blue-600 hover:text-blue-900 flex items-center gap-1 text-sm font-medium"
             >
               <ExternalLink className="h-4 w-4" />
-              <span>Live App</span>
+              <span>View Deployment</span>
             </a>
           )}
         </div>
