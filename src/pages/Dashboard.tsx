@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import ProjectCard from '@/components/ProjectCard';
 import ProjectForm from '@/components/ProjectForm';
-import { Plus, LogOut } from 'lucide-react';
+import { Plus, LogOut, Zap } from 'lucide-react';
 
 interface Project {
   id: string;
@@ -303,6 +303,17 @@ const Dashboard = () => {
         onSubmit={editingProject ? handleUpdateProject : handleCreateProject}
         project={editingProject}
       />
+      
+      {/* Floating Deployment Wizard Button */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <Button
+          onClick={() => navigate('/deployment-wizard')}
+          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 rounded-full px-6 py-3 flex items-center gap-2"
+        >
+          <Zap className="h-5 w-5" />
+          Deployment Wizard
+        </Button>
+      </div>
     </div>
   );
 };
