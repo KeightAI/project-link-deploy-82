@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Copy, Download, CheckCircle, Code, Shield, Sparkles, Edit3, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface WizardData {
   selectedRepo?: {
@@ -42,161 +43,58 @@ const GeneratedOutput = ({ wizardData, onCodeGenerated, onEditPrompt, iterationC
   const generateInfrastructure = async () => {
     setIsGenerating(true);
     
-    // Simulate AI generation with realistic delay
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // Mock generated content based on the wizard data
-    const mockContent = {
-      terraform: `# Terraform configuration for ${wizardData.selectedRepo?.name}
-provider "aws" {
-  region = "us-west-2"
-}
+    try {
+      console.log('Calling OpenAI to generate infrastructure...');
+      
+      const response = await supabase.functions.invoke('generate-infrastructure', {
+        body: {
+          prompt: wizardData.aiPrompt,
+          selectedServices: wizardData.selectedServices || [],
+          repoName: wizardData.selectedRepo?.name || 'Unknown',
+          repoUrl: wizardData.selectedRepo?.github_repo_url || ''
+        }
+      });
 
-# S3 bucket for static assets
-resource "aws_s3_bucket" "app_assets" {
-  bucket = "${wizardData.selectedRepo?.name}-assets-\${random_id.bucket_suffix.hex}"
-}
-
-# CloudFront distribution
-resource "aws_cloudfront_distribution" "app_cdn" {
-  origin {
-    domain_name = aws_s3_bucket.app_assets.bucket_regional_domain_name
-    origin_id   = "S3-\${aws_s3_bucket.app_assets.bucket}"
-  }
-  
-  enabled             = true
-  is_ipv6_enabled     = true
-  default_root_object = "index.html"
-  
-  default_cache_behavior {
-    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-\${aws_s3_bucket.app_assets.bucket}"
-    
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to generate infrastructure');
       }
+
+      const { data } = response;
+      
+      const generatedContent = {
+        terraform: data.terraform || '# Error generating Terraform code',
+        deployScript: data.deployScript || '#!/bin/bash\necho "Error generating deploy script"',
+        dockerFile: data.dockerfile || '# Error generating Dockerfile',
+        iamPolicy: data.iamPolicy || '# Error generating IAM policy'
+      };
+
+      setGeneratedContent(generatedContent);
+      onCodeGenerated(generatedContent.terraform, generatedContent.iamPolicy);
+      
+      console.log('Infrastructure generated successfully');
+      toast({
+        title: "Generation Complete",
+        description: "Infrastructure code has been generated successfully!",
+      });
+      
+    } catch (error) {
+      console.error('Error generating infrastructure:', error);
+      toast({
+        title: "Generation Failed",
+        description: error instanceof Error ? error.message : "Failed to generate infrastructure. Please try again.",
+        variant: "destructive",
+      });
+      
+      // Fallback to show error in UI
+      setGeneratedContent({
+        terraform: `# Error generating infrastructure\n# ${error instanceof Error ? error.message : 'Unknown error'}`,
+        deployScript: "#!/bin/bash\necho 'Error: Failed to generate deployment script'",
+        dockerFile: "# Error: Failed to generate Dockerfile",
+        iamPolicy: "# Error: Failed to generate IAM policy"
+      });
+    } finally {
+      setIsGenerating(false);
     }
-    
-    viewer_protocol_policy = "redirect-to-https"
-  }
-}
-
-# Application Load Balancer
-resource "aws_lb" "app_lb" {
-  name               = "${wizardData.selectedRepo?.name}-lb"
-  internal           = false
-  load_balancer_type = "application"
-  subnets            = [aws_subnet.public_1.id, aws_subnet.public_2.id]
-  
-  enable_deletion_protection = false
-}`,
-
-      deployScript: `#!/bin/bash
-set -e
-
-echo "🚀 Starting deployment for ${wizardData.selectedRepo?.name}"
-
-# Build the application
-echo "📦 Building application..."
-npm install
-npm run build
-
-# Upload to S3
-echo "☁️  Uploading to S3..."
-aws s3 sync dist/ s3://\${S3_BUCKET_NAME} --delete
-
-# Invalidate CloudFront cache
-echo "🔄 Invalidating CloudFront cache..."
-aws cloudfront create-invalidation --distribution-id \${CLOUDFRONT_DISTRIBUTION_ID} --paths "/*"
-
-# Deploy API if exists
-if [ -d "api" ]; then
-  echo "🔧 Deploying API..."
-  cd api
-  npm install
-  npm run deploy
-  cd ..
-fi
-
-echo "✅ Deployment completed successfully!"
-echo "🌐 Your application is available at: https://\${CLOUDFRONT_DOMAIN_NAME}"`,
-
-      dockerFile: `# Multi-stage build for ${wizardData.selectedRepo?.name}
-FROM node:18-alpine AS builder
-
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-RUN npm run build
-
-# Production stage
-FROM nginx:alpine
-
-# Copy built assets
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
-  CMD curl -f http://localhost/ || exit 1
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]`,
-
-      iamPolicy: `{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "S3BucketAccess",
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::${wizardData.selectedRepo?.name}-assets-*",
-        "arn:aws:s3:::${wizardData.selectedRepo?.name}-assets-*/*"
-      ]
-    },
-    {
-      "Sid": "CloudFrontAccess", 
-      "Effect": "Allow",
-      "Action": [
-        "cloudfront:CreateInvalidation",
-        "cloudfront:GetDistribution",
-        "cloudfront:ListDistributions"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "EC2Access",
-      "Effect": "Allow", 
-      "Action": [
-        "ec2:DescribeInstances",
-        "ec2:DescribeImages",
-        "ec2:DescribeKeyPairs",
-        "ec2:DescribeSecurityGroups",
-        "ec2:DescribeSubnets"
-      ],
-      "Resource": "*"
-    }
-  ]
-}`
-    };
-
-    setGeneratedContent(mockContent);
-    onCodeGenerated(mockContent.terraform, mockContent.iamPolicy);
-    setIsGenerating(false);
   };
 
   const copyToClipboard = async (text: string, label: string) => {
