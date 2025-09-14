@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Bot, Sparkles, X } from 'lucide-react';
+import { Bot, Sparkles, X, Edit3, RefreshCw } from 'lucide-react';
 
 interface Project {
   id: string;
@@ -18,6 +18,8 @@ interface AIConfigurationProps {
   onPromptChange: (prompt: string) => void;
   onServicesChange: (services: string[]) => void;
   selectedRepo?: Project;
+  isEditing?: boolean;
+  iterationCount?: number;
 }
 
 const AWS_SERVICES = [
@@ -30,7 +32,9 @@ const AIConfiguration = ({
   selectedServices, 
   onPromptChange, 
   onServicesChange, 
-  selectedRepo 
+  selectedRepo,
+  isEditing = false,
+  iterationCount = 1
 }: AIConfigurationProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -61,8 +65,21 @@ const AIConfiguration = ({
   return (
     <div>
       <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Configure Infrastructure</h2>
-        <p className="text-gray-600">Describe your application and desired AWS infrastructure</p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          {isEditing ? 'Edit Infrastructure Configuration' : 'Configure Infrastructure'}
+        </h2>
+        <p className="text-gray-600">
+          {isEditing 
+            ? 'Modify your requirements to regenerate the infrastructure configuration' 
+            : 'Describe your application and desired AWS infrastructure'
+          }
+        </p>
+        {isEditing && (
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <Edit3 className="h-4 w-4 text-blue-600" />
+            <span className="text-sm text-blue-600">Editing previous configuration (Iteration {iterationCount})</span>
+          </div>
+        )}
       </div>
 
       {/* Selected Repository Info */}

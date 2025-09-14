@@ -25,11 +25,12 @@ interface WizardData {
   selectedServices?: string[];
   generatedCode?: string;
   iamRole?: string;
+  iterationCount?: number;
 }
 
 const DeploymentWizard = () => {
   const [currentStep, setCurrentStep] = useState(1);
-  const [wizardData, setWizardData] = useState<WizardData>({});
+  const [wizardData, setWizardData] = useState<WizardData>({ iterationCount: 1 });
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const { user, loading: authLoading } = useAuth();
@@ -71,6 +72,10 @@ const DeploymentWizard = () => {
   const handleNext = () => {
     if (currentStep < 3) {
       setCurrentStep(currentStep + 1);
+      // If moving to step 3 after editing, increment iteration count
+      if (currentStep === 2 && wizardData.iterationCount && wizardData.iterationCount > 1) {
+        updateWizardData({ iterationCount: wizardData.iterationCount + 1 });
+      }
     }
   };
 
@@ -78,6 +83,12 @@ const DeploymentWizard = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
+  };
+
+  const handleEditPrompt = () => {
+    const newIterationCount = (wizardData.iterationCount || 1) + 1;
+    updateWizardData({ iterationCount: newIterationCount });
+    setCurrentStep(2);
   };
 
   const handleFinish = async () => {
@@ -197,6 +208,8 @@ const DeploymentWizard = () => {
                 onPromptChange={(prompt) => updateWizardData({ aiPrompt: prompt })}
                 onServicesChange={(services) => updateWizardData({ selectedServices: services })}
                 selectedRepo={wizardData.selectedRepo}
+                isEditing={wizardData.iterationCount && wizardData.iterationCount > 1}
+                iterationCount={wizardData.iterationCount}
               />
             )}
             
@@ -204,6 +217,8 @@ const DeploymentWizard = () => {
               <GeneratedOutput
                 wizardData={wizardData}
                 onCodeGenerated={(code, iam) => updateWizardData({ generatedCode: code, iamRole: iam })}
+                onEditPrompt={handleEditPrompt}
+                iterationCount={wizardData.iterationCount}
               />
             )}
           </CardContent>

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Download, CheckCircle, Code, Shield, Sparkles } from 'lucide-react';
+import { Copy, Download, CheckCircle, Code, Shield, Sparkles, Edit3, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface WizardData {
@@ -21,9 +21,11 @@ interface WizardData {
 interface GeneratedOutputProps {
   wizardData: WizardData;
   onCodeGenerated: (code: string, iam: string) => void;
+  onEditPrompt: () => void;
+  iterationCount?: number;
 }
 
-const GeneratedOutput = ({ wizardData, onCodeGenerated }: GeneratedOutputProps) => {
+const GeneratedOutput = ({ wizardData, onCodeGenerated, onEditPrompt, iterationCount = 1 }: GeneratedOutputProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState({
     terraform: '',
@@ -246,19 +248,38 @@ CMD ["nginx", "-g", "daemon off;"]`,
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Review & Deploy</h2>
         <p className="text-gray-600">Generated infrastructure code and deployment configuration</p>
+        {iterationCount > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <RefreshCw className="h-4 w-4 text-blue-600" />
+            <span className="text-sm text-blue-600">Configuration updated (Iteration {iterationCount})</span>
+          </div>
+        )}
       </div>
 
       {/* Summary Card */}
       <Card className="mb-6 bg-green-50 border-green-200">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-green-800">
-            <CheckCircle className="h-5 w-5" />
-            Configuration Generated Successfully
-          </CardTitle>
-          <CardDescription className="text-green-700">
-            Based on your requirements for <strong>{wizardData.selectedRepo?.name}</strong> using{' '}
-            {wizardData.selectedServices?.join(', ') || 'selected AWS services'}
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-green-800">
+                <CheckCircle className="h-5 w-5" />
+                Configuration Generated Successfully
+              </CardTitle>
+              <CardDescription className="text-green-700">
+                Based on your requirements for <strong>{wizardData.selectedRepo?.name}</strong> using{' '}
+                {wizardData.selectedServices?.join(', ') || 'selected AWS services'}
+              </CardDescription>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={onEditPrompt}
+              className="border-green-300 text-green-800 hover:bg-green-100"
+            >
+              <Edit3 className="h-4 w-4 mr-2" />
+              Edit Prompt
+            </Button>
+          </div>
         </CardHeader>
       </Card>
 
