@@ -1,10 +1,13 @@
 project_id = "yfezwmgsudmthpcjpbdn"
+
 [functions.deploy-project]
 enabled = true
 verify_jwt = true
-import_map = "./functions/deploy-project/deno.json"
-entrypoint = "./functions/deploy-project/index.ts"
+import_map = "functions/deploy-project/deno.json"
+entrypoint = "functions/deploy-project/index.ts"
 
 [functions.generate-infrastructure]
 enabled = true
 verify_jwt = true
+import_map = "functions/generate-infrastructure/deno.json"
+entrypoint = "functions/generate-infrastructure/index.ts"
