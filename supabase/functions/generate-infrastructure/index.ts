@@ -14,7 +14,7 @@ serve(async (req) => {
   try {
     const { prompt, selectedServices, repoName, repoUrl } = await req.json();
 
-    const OPENAI_API_KEY = Deno.env.get('OPEN_AI_KEY');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     if (!OPENAI_API_KEY) {
       throw new Error('OpenAI API key not found');
     }
