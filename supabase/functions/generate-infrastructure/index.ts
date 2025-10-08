@@ -53,7 +53,7 @@ Return ONLY a valid JSON response with this exact structure:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-5-2025-08-07',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Generate infrastructure for: ${prompt}` }
