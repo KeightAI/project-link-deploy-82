@@ -19,26 +19,28 @@ serve(async (req) => {
       throw new Error('OpenAI API key not found');
     }
 
-    const systemPrompt = `You are an expert DevOps engineer and cloud architect. Generate production-ready infrastructure code based on user requirements.
+    const systemPrompt = `You are an expert DevOps engineer and cloud architect specializing in modern infrastructure-as-code. Generate production-ready SST (Serverless Stack) configuration based on user requirements.
 
-Analyze the user's requirements and generate EXACTLY 4 code sections:
-1. Terraform configuration for AWS infrastructure
-2. Deployment script (bash/shell script)
-3. Dockerfile for containerization
-4. IAM policy JSON for security
+Analyze the user's requirements and generate EXACTLY 3 code sections:
+1. SST Configuration (TypeScript) - Modern infrastructure as code using SST v3
+2. Suggested Changes - Detailed markdown guide for implementation steps and best practices
+3. IAM Policy JSON - Security policies for AWS services
 
 Requirements:
 - Repository: ${repoName} (${repoUrl})
 - Selected AWS Services: ${selectedServices.join(', ')}
 - User Requirements: ${prompt}
 
-Generate practical, production-ready code that follows AWS best practices. Each section should be complete and functional.
+Generate practical, production-ready SST configuration that follows AWS best practices. Focus on:
+- SST v3 syntax with TypeScript
+- Proper resource naming and organization
+- Environment-specific configurations
+- Security best practices
 
 Return ONLY a valid JSON response with this exact structure:
 {
-  "terraform": "# Terraform code here...",
-  "deployScript": "#!/bin/bash\\n# Deploy script here...",
-  "dockerfile": "# Dockerfile here...",
+  "sstConfig": "// SST configuration TypeScript code here...",
+  "suggestedChanges": "# Suggested Changes\\n\\nDetailed implementation guide here...",
   "iamPolicy": "# IAM policy JSON here..."
 }`;
 
@@ -82,9 +84,8 @@ Return ONLY a valid JSON response with this exact structure:
       console.error('Failed to parse OpenAI response:', parseError);
       // Fallback with error message
       parsedContent = {
-        terraform: `# Error parsing response\n# Raw content:\n${generatedContent}`,
-        deployScript: "#!/bin/bash\necho 'Error: Could not parse infrastructure generation'",
-        dockerfile: "# Error parsing response",
+        sstConfig: `// Error parsing response\n// Raw content:\n${generatedContent}`,
+        suggestedChanges: "# Error\n\nCould not parse infrastructure generation response.",
         iamPolicy: "# Error parsing response"
       };
     }
@@ -97,9 +98,8 @@ Return ONLY a valid JSON response with this exact structure:
     console.error('Error in generate-infrastructure function:', error);
     return new Response(JSON.stringify({ 
       error: error.message,
-      terraform: "# Error generating infrastructure",
-      deployScript: "#!/bin/bash\necho 'Error generating deployment script'",
-      dockerfile: "# Error generating Dockerfile", 
+      sstConfig: "// Error generating SST configuration",
+      suggestedChanges: "# Error\n\nFailed to generate suggested changes.",
       iamPolicy: "# Error generating IAM policy"
     }), {
       status: 500,

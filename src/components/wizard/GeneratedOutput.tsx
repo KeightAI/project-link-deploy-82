@@ -29,9 +29,8 @@ interface GeneratedOutputProps {
 const GeneratedOutput = ({ wizardData, onCodeGenerated, onEditPrompt, iterationCount = 1 }: GeneratedOutputProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState({
-    terraform: '',
-    deployScript: '',
-    dockerFile: '',
+    sstConfig: '',
+    suggestedChanges: '',
     iamPolicy: ''
   });
   const { toast } = useToast();
@@ -62,14 +61,13 @@ const GeneratedOutput = ({ wizardData, onCodeGenerated, onEditPrompt, iterationC
       const { data } = response;
       
       const generatedContent = {
-        terraform: data.terraform || '# Error generating Terraform code',
-        deployScript: data.deployScript || '#!/bin/bash\necho "Error generating deploy script"',
-        dockerFile: data.dockerfile || '# Error generating Dockerfile',
+        sstConfig: data.sstConfig || '// Error generating SST configuration',
+        suggestedChanges: data.suggestedChanges || '# Error\n\nFailed to generate suggested changes.',
         iamPolicy: data.iamPolicy || '# Error generating IAM policy'
       };
 
       setGeneratedContent(generatedContent);
-      onCodeGenerated(generatedContent.terraform, generatedContent.iamPolicy);
+      onCodeGenerated(generatedContent.sstConfig, generatedContent.iamPolicy);
       
       console.log('Infrastructure generated successfully');
       toast({
@@ -87,9 +85,8 @@ const GeneratedOutput = ({ wizardData, onCodeGenerated, onEditPrompt, iterationC
       
       // Fallback to show error in UI
       setGeneratedContent({
-        terraform: `# Error generating infrastructure\n# ${error instanceof Error ? error.message : 'Unknown error'}`,
-        deployScript: "#!/bin/bash\necho 'Error: Failed to generate deployment script'",
-        dockerFile: "# Error: Failed to generate Dockerfile",
+        sstConfig: `// Error generating SST configuration\n// ${error instanceof Error ? error.message : 'Unknown error'}`,
+        suggestedChanges: `# Error\n\nFailed to generate suggested changes.\n\n${error instanceof Error ? error.message : 'Unknown error'}`,
         iamPolicy: "# Error: Failed to generate IAM policy"
       });
     } finally {
@@ -182,27 +179,26 @@ const GeneratedOutput = ({ wizardData, onCodeGenerated, onEditPrompt, iterationC
       </Card>
 
       {/* Generated Code Tabs */}
-      <Tabs defaultValue="terraform" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="terraform">Terraform</TabsTrigger>
-          <TabsTrigger value="deploy">Deploy Script</TabsTrigger>
-          <TabsTrigger value="docker">Dockerfile</TabsTrigger>
+      <Tabs defaultValue="sst" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="sst">SST Config</TabsTrigger>
+          <TabsTrigger value="changes">Suggested Changes</TabsTrigger>
           <TabsTrigger value="iam">IAM Policy</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="terraform">
+        <TabsContent value="sst">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Code className="h-5 w-5" />
-                  <CardTitle>Terraform Configuration</CardTitle>
+                  <CardTitle>SST Configuration</CardTitle>
                 </div>
                 <div className="flex gap-2">
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => copyToClipboard(generatedContent.terraform, 'Terraform configuration')}
+                    onClick={() => copyToClipboard(generatedContent.sstConfig, 'SST configuration')}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copy
@@ -210,36 +206,36 @@ const GeneratedOutput = ({ wizardData, onCodeGenerated, onEditPrompt, iterationC
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => downloadFile(generatedContent.terraform, 'main.tf')}
+                    onClick={() => downloadFile(generatedContent.sstConfig, 'sst.config.ts')}
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Download
                   </Button>
                 </div>
               </div>
-              <CardDescription>Infrastructure as Code configuration for AWS</CardDescription>
+              <CardDescription>Modern infrastructure as code using SST v3</CardDescription>
             </CardHeader>
             <CardContent>
               <pre className="bg-gray-50 p-4 rounded-lg text-sm overflow-x-auto">
-                <code>{generatedContent.terraform}</code>
+                <code>{generatedContent.sstConfig}</code>
               </pre>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="deploy">
+        <TabsContent value="changes">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Code className="h-5 w-5" />
-                  <CardTitle>Deployment Script</CardTitle>
+                  <Sparkles className="h-5 w-5" />
+                  <CardTitle>Suggested Changes</CardTitle>
                 </div>
                 <div className="flex gap-2">
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => copyToClipboard(generatedContent.deployScript, 'Deploy script')}
+                    onClick={() => copyToClipboard(generatedContent.suggestedChanges, 'Suggested changes')}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copy
@@ -247,55 +243,18 @@ const GeneratedOutput = ({ wizardData, onCodeGenerated, onEditPrompt, iterationC
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => downloadFile(generatedContent.deployScript, 'deploy.sh')}
+                    onClick={() => downloadFile(generatedContent.suggestedChanges, 'suggested-changes.md')}
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Download
                   </Button>
                 </div>
               </div>
-              <CardDescription>Automated deployment script</CardDescription>
+              <CardDescription>Implementation guide and best practices</CardDescription>
             </CardHeader>
             <CardContent>
-              <pre className="bg-gray-50 p-4 rounded-lg text-sm overflow-x-auto">
-                <code>{generatedContent.deployScript}</code>
-              </pre>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="docker">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Code className="h-5 w-5" />
-                  <CardTitle>Dockerfile</CardTitle>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => copyToClipboard(generatedContent.dockerFile, 'Dockerfile')}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => downloadFile(generatedContent.dockerFile, 'Dockerfile')}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download
-                  </Button>
-                </div>
-              </div>
-              <CardDescription>Container configuration for your application</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <pre className="bg-gray-50 p-4 rounded-lg text-sm overflow-x-auto">
-                <code>{generatedContent.dockerFile}</code>
+              <pre className="bg-gray-50 p-4 rounded-lg text-sm overflow-x-auto whitespace-pre-wrap">
+                <code>{generatedContent.suggestedChanges}</code>
               </pre>
             </CardContent>
           </Card>
