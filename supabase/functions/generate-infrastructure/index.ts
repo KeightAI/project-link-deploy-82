@@ -58,7 +58,7 @@ Return ONLY a valid JSON response with this exact structure:
       body: JSON.stringify({
         specification_hash: 'latest',
         config: {
-          MODEL: {
+          ANALYER: {
             provider_id: 'openai',
             model_id: 'gpt-4o-mini'
           }
