@@ -19,7 +19,7 @@ serve(async (req) => {
       throw new Error('Dust API key not found');
     }
 
-    const DUST_WORKSPACE_ID = 'vlt_ySrW39PAjHD9';
+    const DUST_WORKSPACE_ID = 'SydwFOh7Iq';
     const DUST_APP_ID = 'CLUlCI2i24';
 
     const systemPrompt = `You are an expert DevOps engineer and cloud architect specializing in modern infrastructure-as-code. Generate production-ready SST (Serverless Stack) configuration based on user requirements.
