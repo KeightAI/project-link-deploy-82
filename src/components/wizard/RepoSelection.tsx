@@ -82,7 +82,7 @@ const RepoSelection = ({ projects, selectedRepo, onSelectRepo, onAddNew }: RepoS
                         Branch: {project.branch_name}
                       </Badge>
                     )}
-                    {project.is_deployed ? (
+                    {project.is_deployed || project.deployed_url ? (
                       <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
                         Already deployed
                       </Badge>
