@@ -14,13 +14,10 @@ serve(async (req) => {
   try {
     const { prompt, selectedServices, repoName, repoUrl } = await req.json();
 
-    const DUST_API_KEY = Deno.env.get('DUST_API_KEY');
-    if (!DUST_API_KEY) {
-      throw new Error('Dust API key not found');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    if (!OPENAI_API_KEY) {
+      throw new Error('OpenAI API key not found');
     }
-
-    const DUST_WORKSPACE_ID = 'SydwFOh7Iq';
-    const DUST_APP_ID = 'CLUlCI2i24';
 
     const systemPrompt = `You are an expert DevOps engineer and cloud architect specializing in modern infrastructure-as-code. Generate production-ready SST (Serverless Stack) configuration based on user requirements.
 
@@ -47,41 +44,32 @@ Return ONLY a valid JSON response with this exact structure:
   "iamPolicy": "# IAM policy JSON here..."
 }`;
 
-    console.log('Generating infrastructure with Dust.tt...');
+    console.log('Generating infrastructure with OpenAI...');
 
-    const response = await fetch(`https://dust.tt/api/v1/w/${DUST_WORKSPACE_ID}/apps/${DUST_APP_ID}/runs`, {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${DUST_API_KEY}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        specification_hash: 'latest',
-        config: {
-          ANALYER: {
-            provider_id: 'openai',
-            model_id: 'gpt-4o-mini'
-          }
-        },
-        inputs: [{
-          requirements: `${prompt}\n\nRepository: ${repoName} (${repoUrl})\nSelected AWS Services: ${selectedServices.join(', ')}`
-        }]
+        model: 'gpt-5-2025-08-07',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Generate infrastructure for: ${prompt}` }
+        ],
+        max_completion_tokens: 4000,
       }),
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('Dust.tt API error:', errorData);
-      throw new Error(`Dust.tt API error: ${response.status}`);
+      console.error('OpenAI API error:', errorData);
+      throw new Error(`OpenAI API error: ${response.status}`);
     }
 
     const data = await response.json();
-    console.log('Dust.tt response:', JSON.stringify(data, null, 2));
-    
-    // Extract the generated content from Dust.tt response
-    const generatedContent = data.run?.results?.[0]?.[0]?.value || 
-                            data.run?.traces?.[0]?.[0]?.value ||
-                            JSON.stringify(data);
+    const generatedContent = data.choices[0].message.content;
 
     console.log('Generated content:', generatedContent);
 
@@ -106,11 +94,10 @@ Return ONLY a valid JSON response with this exact structure:
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+  } catch (error) {
     console.error('Error in generate-infrastructure function:', error);
     return new Response(JSON.stringify({ 
-      error: errorMessage,
+      error: error.message,
       sstConfig: "// Error generating SST configuration",
       suggestedChanges: "# Error\n\nFailed to generate suggested changes.",
       iamPolicy: "# Error generating IAM policy"
