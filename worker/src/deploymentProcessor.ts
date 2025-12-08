@@ -943,31 +943,51 @@ export class DeploymentProcessor {
         return;
       }
 
-      // Extract URL from logs using regex to match pattern like "MyWeb: https://..."
-      // Updated regex to match the format: [SST] MyWeb: https://d3ovomhyw0sbrh.cloudfront.net
-      const urlRegex = /\[SST\]\s+\w+:\s+(https?:\/\/[^\s]+)/g;
-      const matches = [...deployment.logs.matchAll(urlRegex)];
+      // Extract URL from logs using multiple patterns
+      // Pattern 1: SST v3 format like "[SST] MyWeb: https://..."
+      // Pattern 2: CloudFront URL anywhere in logs
+      // Pattern 3: SST outputs section "MyWeb https://..."
+      const patterns = [
+        /\[SST\]\s+(\w+):\s+(https?:\/\/[^\s]+)/g,
+        /\[SST\]\s+(\w+)\s+(https?:\/\/[a-z0-9]+\.cloudfront\.net)/gi,
+        /(https?:\/\/[a-z0-9]+\.cloudfront\.net)/gi,
+      ];
       
       await this.addLog(deploymentId, `🔍 Looking for deployed URL in logs...`);
       
-      if (matches.length > 0) {
-        const deployedUrl = matches[matches.length - 1][1]; // Get the last URL found
+      let deployedUrl: string | null = null;
+      
+      for (const urlRegex of patterns) {
+        const matches = [...deployment.logs.matchAll(urlRegex)];
+        if (matches.length > 0) {
+          // Get the URL from the last match (could be capture group 1 or 2 depending on pattern)
+          const lastMatch = matches[matches.length - 1];
+          deployedUrl = lastMatch[2] || lastMatch[1];
+          await this.addLog(deploymentId, `🔗 Found URL with pattern: ${urlRegex.source}`);
+          break;
+        }
+      }
+      
+      if (deployedUrl) {
         await this.addLog(deploymentId, `🔗 Extracted deployed URL: ${deployedUrl}`);
         
-        // Update the projects table with the deployed URL
-        const { error: projectError } = await this.supabase
+        // Update the projects table with the deployed URL and set is_deployed to true
+        const { error: projectError, data: projectData } = await this.supabase
           .from('projects')
           .update({ 
             deployed_url: deployedUrl,
             is_deployed: true,
             updated_at: new Date().toISOString()
           })
-          .eq('github_repo_url', deployment.repo_url);
+          .eq('github_repo_url', deployment.repo_url)
+          .select();
 
         if (projectError) {
           await this.addLog(deploymentId, `❌ Failed to update project with deployed URL: ${projectError.message}`);
+        } else if (!projectData || projectData.length === 0) {
+          await this.addLog(deploymentId, `⚠️ No project found with repo_url: ${deployment.repo_url}`);
         } else {
-          await this.addLog(deploymentId, '✅ Project updated with deployed URL');
+          await this.addLog(deploymentId, `✅ Project updated with deployed URL (is_deployed: true)`);
         }
       } else {
         await this.addLog(deploymentId, '⚠️ No deployed URL found in logs');
