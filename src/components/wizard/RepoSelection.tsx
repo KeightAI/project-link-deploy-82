@@ -11,6 +11,8 @@ interface Project {
   github_repo_url: string | null;
   github_repo_id: string | null;
   branch_name: string | null;
+  is_deployed: boolean | null;
+  deployed_url: string | null;
 }
 
 interface RepoSelectionProps {
@@ -80,9 +82,15 @@ const RepoSelection = ({ projects, selectedRepo, onSelectRepo, onAddNew }: RepoS
                         Branch: {project.branch_name}
                       </Badge>
                     )}
-                    <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
-                      Ready for deployment
-                    </Badge>
+                    {project.is_deployed ? (
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
+                        Already deployed
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+                        Ready for deployment
+                      </Badge>
+                    )}
                   </div>
                 </CardContent>
               </Card>

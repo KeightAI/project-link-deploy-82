@@ -17,6 +17,8 @@ interface Project {
   github_repo_url: string | null;
   github_repo_id: string | null;
   branch_name: string | null;
+  is_deployed: boolean | null;
+  deployed_url: string | null;
 }
 
 interface WizardData {
