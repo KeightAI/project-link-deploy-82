@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, ArrowRight, Github, CheckCircle } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import RepoSelection from '@/components/wizard/RepoSelection';
-import AIConfiguration from '@/components/wizard/AIConfiguration';
-import GeneratedOutput from '@/components/wizard/GeneratedOutput';
+import ChatInterface from '@/components/wizard/ChatInterface';
+import { ConversationState } from '@/types/chat';
 
 interface Project {
   id: string;
@@ -23,16 +23,13 @@ interface Project {
 
 interface WizardData {
   selectedRepo?: Project;
-  aiPrompt?: string;
-  selectedServices?: string[];
-  generatedCode?: string;
-  iamRole?: string;
-  iterationCount?: number;
+  conversation?: ConversationState;
+  hasGeneratedCode?: boolean;
 }
 
 const DeploymentWizard = () => {
   const [currentStep, setCurrentStep] = useState(1);
-  const [wizardData, setWizardData] = useState<WizardData>({ iterationCount: 1 });
+  const [wizardData, setWizardData] = useState<WizardData>({});
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const { user, loading: authLoading } = useAuth();
@@ -72,12 +69,8 @@ const DeploymentWizard = () => {
   };
 
   const handleNext = () => {
-    if (currentStep < 3) {
+    if (currentStep < 2) {
       setCurrentStep(currentStep + 1);
-      // If moving to step 3 after editing, increment iteration count
-      if (currentStep === 2 && wizardData.iterationCount && wizardData.iterationCount > 1) {
-        updateWizardData({ iterationCount: wizardData.iterationCount + 1 });
-      }
     }
   };
 
@@ -87,25 +80,39 @@ const DeploymentWizard = () => {
     }
   };
 
-  const handleEditPrompt = () => {
-    const newIterationCount = (wizardData.iterationCount || 1) + 1;
-    updateWizardData({ iterationCount: newIterationCount });
-    setCurrentStep(2);
-  };
-
   const handleFinish = async () => {
     try {
-      // Here you would typically save the deployment configuration
-      // and trigger the deployment process
+      if (!wizardData.conversation || !wizardData.selectedRepo) {
+        toast({
+          title: "Error",
+          description: "Missing conversation or repository data",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Save conversation to database
+      const { error } = await supabase.from('wizard_conversations').insert({
+        user_id: user?.id,
+        project_id: wizardData.selectedRepo.id,
+        messages: wizardData.conversation.messages,
+        latest_sst_config: wizardData.conversation.latestArtifacts?.sstConfig,
+        latest_iam_policy: wizardData.conversation.latestArtifacts?.iamPolicy,
+        latest_suggested_changes: wizardData.conversation.latestArtifacts?.suggestedChanges,
+        repo_analysis: wizardData.conversation.repoAnalysis,
+      });
+
+      if (error) throw error;
+
       toast({
         title: "Success",
-        description: "Deployment wizard completed! Your configuration has been saved.",
+        description: "Your infrastructure configuration has been saved!",
       });
       navigate('/dashboard');
     } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to complete deployment wizard",
+        description: "Failed to save configuration: " + error.message,
         variant: "destructive",
       });
     }
@@ -116,9 +123,7 @@ const DeploymentWizard = () => {
       case 1:
         return wizardData.selectedRepo !== undefined;
       case 2:
-        return wizardData.aiPrompt && wizardData.aiPrompt.trim().length > 0;
-      case 3:
-        return true;
+        return wizardData.hasGeneratedCode === true;
       default:
         return false;
     }
@@ -126,8 +131,7 @@ const DeploymentWizard = () => {
 
   const steps = [
     { number: 1, title: "Select Repository", description: "Choose your GitHub repository" },
-    { number: 2, title: "Configure Infrastructure", description: "Describe your deployment needs" },
-    { number: 3, title: "Review & Deploy", description: "Review generated configuration" }
+    { number: 2, title: "Design Infrastructure", description: "Chat with AI to configure deployment" }
   ];
 
   if (loading) {
@@ -192,39 +196,32 @@ const DeploymentWizard = () => {
         </div>
 
         {/* Step Content */}
-        <Card className="shadow-lg border-0">
-          <CardContent className="p-8">
-            {currentStep === 1 && (
+        {currentStep === 1 ? (
+          <Card className="shadow-lg border-0">
+            <CardContent className="p-8">
               <RepoSelection
                 projects={projects}
                 selectedRepo={wizardData.selectedRepo}
                 onSelectRepo={(repo) => updateWizardData({ selectedRepo: repo })}
                 onAddNew={() => navigate('/dashboard')}
               />
-            )}
-            
-            {currentStep === 2 && (
-              <AIConfiguration
-                prompt={wizardData.aiPrompt || ''}
-                selectedServices={wizardData.selectedServices || []}
-                onPromptChange={(prompt) => updateWizardData({ aiPrompt: prompt })}
-                onServicesChange={(services) => updateWizardData({ selectedServices: services })}
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="shadow-lg border rounded-lg overflow-hidden bg-white" style={{ height: 'calc(100vh - 280px)' }}>
+            {wizardData.selectedRepo && (
+              <ChatInterface
                 selectedRepo={wizardData.selectedRepo}
-                isEditing={wizardData.iterationCount && wizardData.iterationCount > 1}
-                iterationCount={wizardData.iterationCount}
+                onConversationUpdate={(conversation) =>
+                  updateWizardData({ conversation })
+                }
+                onCodeGenerated={(hasCode) =>
+                  updateWizardData({ hasGeneratedCode: hasCode })
+                }
               />
             )}
-            
-            {currentStep === 3 && (
-              <GeneratedOutput
-                wizardData={wizardData}
-                onCodeGenerated={(code, iam) => updateWizardData({ generatedCode: code, iamRole: iam })}
-                onEditPrompt={handleEditPrompt}
-                iterationCount={wizardData.iterationCount}
-              />
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        )}
 
         {/* Navigation */}
         <div className="flex justify-between items-center mt-8">
@@ -242,17 +239,18 @@ const DeploymentWizard = () => {
               Step {currentStep} of {steps.length}
             </span>
           </div>
-          
-          {currentStep === 3 ? (
-            <Button 
+
+          {currentStep === 2 ? (
+            <Button
               onClick={handleFinish}
+              disabled={!canProceed()}
               className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
             >
               <CheckCircle className="h-4 w-4 mr-2" />
-              Finish
+              Save Configuration
             </Button>
           ) : (
-            <Button 
+            <Button
               onClick={handleNext}
               disabled={!canProceed()}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"

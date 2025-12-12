@@ -12,39 +12,99 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, selectedServices, repoName, repoUrl } = await req.json();
+    const {
+      conversationHistory,
+      userMessage,
+      selectedServices,
+      repoName,
+      repoUrl,
+      repoAnalysis,
+      // Backward compatibility
+      prompt
+    } = await req.json();
+
+    // Use new format or fall back to old format
+    const currentMessage = userMessage || prompt;
 
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     if (!OPENAI_API_KEY) {
       throw new Error('OpenAI API key not found');
     }
 
-    const systemPrompt = `You are an expert DevOps engineer and cloud architect specializing in modern infrastructure-as-code. Generate production-ready SST (Serverless Stack) configuration based on user requirements.
+    // Build repo context
+    let repoContext = `- Repository: ${repoName} (${repoUrl})`;
+    if (repoAnalysis) {
+      repoContext += `\n- Framework: ${repoAnalysis.framework || 'Unknown'}`;
+      if (repoAnalysis.dependencies && repoAnalysis.dependencies.length > 0) {
+        repoContext += `\n- Dependencies: ${repoAnalysis.dependencies.join(', ')}`;
+      }
+    }
 
-Analyze the user's requirements and generate EXACTLY 3 code sections:
-1. SST Configuration (TypeScript) - Modern infrastructure as code using SST v3
-2. Suggested Changes - Detailed markdown guide for implementation steps and best practices
-3. IAM Policy JSON - Security policies for AWS services
+    // Determine if this is first message or a follow-up
+    const isFirstMessage = !conversationHistory || conversationHistory.length <= 1;
 
-Requirements:
-- Repository: ${repoName} (${repoUrl})
-- Selected AWS Services: ${selectedServices.join(', ')}
-- User Requirements: ${prompt}
+    const systemPrompt = isFirstMessage
+      ? `You are an expert DevOps engineer and cloud architect specializing in modern infrastructure-as-code. You're helping configure AWS infrastructure using SST (Serverless Stack).
 
-Generate practical, production-ready SST configuration that follows AWS best practices. Focus on:
-- SST v3 syntax with TypeScript
-- Proper resource naming and organization
-- Environment-specific configurations
-- Security best practices
+REPOSITORY CONTEXT:
+${repoContext}
 
+YOUR TASK:
+1. Respond conversationally to acknowledge the user's requirements
+2. Generate production-ready SST v3 configuration
+3. Provide implementation guidance
+4. Generate IAM policy
+
+CONVERSATION STYLE:
+- Be friendly and conversational
+- Explain your infrastructure decisions briefly
+- Ask clarifying questions if requirements are vague
+- Use technical language but keep it accessible
+
+RESPONSE FORMAT:
 Return ONLY a valid JSON response with this exact structure:
 {
-  "sstConfig": "// SST configuration TypeScript code here...",
-  "suggestedChanges": "# Suggested Changes\\n\\nDetailed implementation guide here...",
-  "iamPolicy": "# IAM policy JSON here..."
-}`;
+  "message": "Your conversational response here (2-3 sentences explaining what you've created)...",
+  "sstConfig": "// SST TypeScript configuration...",
+  "suggestedChanges": "# Implementation Guide\\n\\nDetailed steps...",
+  "iamPolicy": "# IAM policy JSON..."
+}`
+      : `You are continuing a conversation about AWS infrastructure configuration using SST.
+
+REPOSITORY CONTEXT:
+${repoContext}
+
+YOUR TASK:
+1. Address the user's new request
+2. Update the infrastructure configuration as needed
+3. Maintain consistency with previous decisions
+4. Explain what changed and why
+
+Return the same JSON format as before.`;
 
     console.log('Generating infrastructure with OpenAI...');
+
+    // Build messages array for OpenAI
+    const messages = [{ role: 'system', content: systemPrompt }];
+
+    // Add conversation history if available
+    if (conversationHistory && conversationHistory.length > 0) {
+      // Skip system messages, only include user/assistant
+      conversationHistory.forEach((msg: any) => {
+        if (msg.role !== 'system') {
+          messages.push({
+            role: msg.role,
+            content: msg.content
+          });
+        }
+      });
+    } else {
+      // Old format - single message
+      messages.push({
+        role: 'user',
+        content: `${selectedServices && selectedServices.length > 0 ? `Selected AWS Services: ${selectedServices.join(', ')}\n\n` : ''}${currentMessage}`
+      });
+    }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -54,10 +114,7 @@ Return ONLY a valid JSON response with this exact structure:
       },
       body: JSON.stringify({
         model: 'gpt-5-2025-08-07',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Generate infrastructure for: ${prompt}` }
-        ],
+        messages,
         max_completion_tokens: 4000,
       }),
     });
@@ -80,10 +137,16 @@ Return ONLY a valid JSON response with this exact structure:
       const jsonMatch = generatedContent.match(/\{[\s\S]*\}/);
       const jsonString = jsonMatch ? jsonMatch[0] : generatedContent;
       parsedContent = JSON.parse(jsonString);
+
+      // Ensure message field exists for backward compatibility
+      if (!parsedContent.message) {
+        parsedContent.message = "I've generated your infrastructure configuration based on your requirements.";
+      }
     } catch (parseError) {
       console.error('Failed to parse OpenAI response:', parseError);
       // Fallback with error message
       parsedContent = {
+        message: "I encountered an error generating your infrastructure. Please try again.",
         sstConfig: `// Error parsing response\n// Raw content:\n${generatedContent}`,
         suggestedChanges: "# Error\n\nCould not parse infrastructure generation response.",
         iamPolicy: "# Error parsing response"
@@ -96,8 +159,9 @@ Return ONLY a valid JSON response with this exact structure:
 
   } catch (error) {
     console.error('Error in generate-infrastructure function:', error);
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       error: error.message,
+      message: "I encountered an error while generating your infrastructure. Please try again.",
       sstConfig: "// Error generating SST configuration",
       suggestedChanges: "# Error\n\nFailed to generate suggested changes.",
       iamPolicy: "# Error generating IAM policy"
