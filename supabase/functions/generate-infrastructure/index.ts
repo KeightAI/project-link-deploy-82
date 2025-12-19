@@ -12,6 +12,10 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Function invoked, parsing request body...');
+    const requestBody = await req.json();
+    console.log('Request body received:', JSON.stringify(requestBody, null, 2));
+
     const {
       conversationHistory,
       userMessage,
@@ -21,15 +25,18 @@ serve(async (req) => {
       repoAnalysis,
       // Backward compatibility
       prompt
-    } = await req.json();
+    } = requestBody;
 
     // Use new format or fall back to old format
     const currentMessage = userMessage || prompt;
 
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      throw new Error('OpenAI API key not found');
+    console.log('Checking for Gemini API key...');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      console.error('Gemini API key not found in environment');
+      throw new Error('Gemini API key not found');
     }
+    console.log('Gemini API key found');
 
     // Build repo context
     let repoContext = `- Repository: ${repoName} (${repoUrl})`;
@@ -82,51 +89,57 @@ YOUR TASK:
 
 Return the same JSON format as before.`;
 
-    console.log('Generating infrastructure with OpenAI...');
+    console.log('Generating infrastructure with Gemini...');
 
-    // Build messages array for OpenAI
-    const messages = [{ role: 'system', content: systemPrompt }];
+    // Build prompt for Gemini
+    let geminiPrompt = systemPrompt + '\n\n';
 
     // Add conversation history if available
     if (conversationHistory && conversationHistory.length > 0) {
-      // Skip system messages, only include user/assistant
       conversationHistory.forEach((msg: any) => {
-        if (msg.role !== 'system') {
-          messages.push({
-            role: msg.role,
-            content: msg.content
-          });
+        if (msg.role === 'user') {
+          geminiPrompt += `User: ${msg.content}\n\n`;
+        } else if (msg.role === 'assistant') {
+          geminiPrompt += `Assistant: ${msg.content}\n\n`;
         }
       });
     } else {
       // Old format - single message
-      messages.push({
-        role: 'user',
-        content: `${selectedServices && selectedServices.length > 0 ? `Selected AWS Services: ${selectedServices.join(', ')}\n\n` : ''}${currentMessage}`
-      });
+      geminiPrompt += `User: ${selectedServices && selectedServices.length > 0 ? `Selected AWS Services: ${selectedServices.join(', ')}\n\n` : ''}${currentMessage}\n\n`;
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages,
-        max_completion_tokens: 4000,
-      }),
-    });
+    geminiPrompt += 'Assistant: ';
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: geminiPrompt
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 4000,
+            responseMimeType: "application/json",
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('OpenAI API error:', errorData);
-      throw new Error(`OpenAI API error: ${response.status}`);
+      console.error('Gemini API error:', errorData);
+      throw new Error(`Gemini API error: ${response.status}`);
     }
 
     const data = await response.json();
-    const generatedContent = data.choices[0].message.content;
+    const generatedContent = data.candidates[0].content.parts[0].text;
 
     console.log('Generated content:', generatedContent);
 
