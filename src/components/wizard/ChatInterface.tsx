@@ -4,7 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Rocket, Info } from 'lucide-react';
+import { Rocket, Info, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -43,6 +43,7 @@ const ChatInterface = ({
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [showCodePanel, setShowCodePanel] = useState(false);
+  const [showInfoBanner, setShowInfoBanner] = useState(true);
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -194,17 +195,25 @@ const ChatInterface = ({
           </div>
 
           {/* Info Banner */}
-          {!showCodePanel && (
+          {!showCodePanel && showInfoBanner && (
             <div className="p-3 mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-start gap-2">
                 <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-xs text-blue-800">
+                <div className="flex-1 text-xs text-blue-800">
                   <p className="font-medium">How this works:</p>
                   <p className="mt-1">
                     Describe your infrastructure needs in natural language. I'll analyze your repository
                     and generate SST configurations, implementation guides, and IAM policies.
                   </p>
                 </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowInfoBanner(false)}
+                  className="h-6 w-6 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           )}
