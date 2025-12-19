@@ -10,4 +10,4 @@ entrypoint = "index.ts"
 enabled = true
 verify_jwt = true
 import_map = "functions/generate-infrastructure/deno.json"
-entrypoint = "index.ts"
+entrypoint = "functions/generate-infrastructure/index.ts"
