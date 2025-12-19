@@ -84,8 +84,8 @@ const ChatMessage = ({ message, isGenerating }: ChatMessageProps) => {
 
               {/* Loading state */}
               {isGenerating && (
-                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-                  <div className="animate-spin h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full" />
+                <div className="mt-2 flex items-center gap-2 text-xs text-white">
+                  <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full" />
                   <span>Generating configuration...</span>
                 </div>
               )}

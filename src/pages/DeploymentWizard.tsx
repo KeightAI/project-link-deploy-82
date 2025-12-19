@@ -163,12 +163,12 @@ const DeploymentWizard = () => {
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Progress Steps */}
         <div className="mb-8">
-          <div className="flex items-center justify-between">
-            {steps.map((step) => (
+          <div className="flex items-center justify-center gap-8">
+            {steps.map((step, index) => (
               <div key={step.number} className="flex items-center">
                 <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
-                  currentStep >= step.number 
-                    ? 'bg-blue-600 border-blue-600 text-white' 
+                  currentStep >= step.number
+                    ? 'bg-blue-600 border-blue-600 text-white'
                     : 'border-gray-300 text-gray-400'
                 }`}>
                   {currentStep > step.number ? (
@@ -185,8 +185,8 @@ const DeploymentWizard = () => {
                   </div>
                   <div className="text-xs text-gray-500">{step.description}</div>
                 </div>
-                {step.number < steps.length && (
-                  <div className={`mx-8 h-0.5 w-20 ${
+                {index < steps.length - 1 && (
+                  <div className={`ml-8 h-0.5 w-20 ${
                     currentStep > step.number ? 'bg-blue-600' : 'bg-gray-300'
                   }`} />
                 )}
