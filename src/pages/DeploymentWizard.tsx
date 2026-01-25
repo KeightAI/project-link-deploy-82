@@ -91,18 +91,19 @@ const DeploymentWizard = () => {
         return;
       }
 
+      // TODO: Re-enable conversation history saving when ready
       // Save conversation to database
-      const { error } = await supabase.from('wizard_conversations').insert({
-        user_id: user?.id,
-        project_id: wizardData.selectedRepo.id,
-        messages: wizardData.conversation.messages,
-        latest_sst_config: wizardData.conversation.latestArtifacts?.sstConfig,
-        latest_iam_policy: wizardData.conversation.latestArtifacts?.iamPolicy,
-        latest_suggested_changes: wizardData.conversation.latestArtifacts?.suggestedChanges,
-        repo_analysis: wizardData.conversation.repoAnalysis,
-      });
+      // const { error } = await supabase.from('wizard_conversations').insert({
+      //   user_id: user?.id,
+      //   project_id: wizardData.selectedRepo.id,
+      //   messages: wizardData.conversation.messages,
+      //   latest_sst_config: wizardData.conversation.latestArtifacts?.sstConfig,
+      //   latest_iam_policy: wizardData.conversation.latestArtifacts?.iamPolicy,
+      //   latest_suggested_changes: wizardData.conversation.latestArtifacts?.suggestedChanges,
+      //   repo_analysis: wizardData.conversation.repoAnalysis,
+      // });
 
-      if (error) throw error;
+      // if (error) throw error;
 
       toast({
         title: "Success",

@@ -1,0 +1,37 @@
+flowchart TB
+ subgraph subGraph0["Frontend Layer"]
+        UI["React Frontend<br>Vite + TypeScript + Tailwind"]
+        Wizard["Deployment Wizard<br>2-Step Process"]
+        Chat["AI Chat Interface<br>Conversational Design"]
+  end
+ subgraph subGraph1["Backend Layer - Supabase"]
+        DB[("PostgreSQL Database<br>Conversation history")]
+        EdgeGen["Edge Function<br>generate-infrastructure"]
+        EdgeDeploy["Edge Function<br>deploy-project"]
+  end
+ subgraph subGraph2["External Services"]
+        GitHub["GitHub API<br>Repo Access"]
+        Gemini["Google Gemini 1.5 Flash<br>Free Tier AI"]
+        Fly["Fly.io Worker<br>Deployment Queue"]
+  end
+ subgraph subGraph3["Target Infrastructure - AWS"]
+        SST["AWS"]
+  end
+ subgraph s1["3d party integrations"]
+        n1@{ label: "<span style=\"background-color:\">Supabase Auth</span><br style=\"--tw-scale-x:\"><span style=\"background-color:\">GitHub OAuth</span>" }
+  end
+    UI --> Wizard & EdgeDeploy
+    Wizard --> Chat
+    Chat --> EdgeGen
+    EdgeGen --> Gemini & DB
+    EdgeDeploy --> Fly
+    Fly --> SST
+    s1 --> GitHub
+
+    n1@{ shape: rect}
+    style UI fill:#3b82f6
+    style EdgeGen fill:#00C853,stroke:#000000
+    style EdgeDeploy fill:#00C853
+    style Gemini fill:#f59e0b
+    style SST fill:#ef4444
+    style n1 fill:#FFF9C4

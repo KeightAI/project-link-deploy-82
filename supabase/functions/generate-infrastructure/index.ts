@@ -51,31 +51,34 @@ serve(async (req) => {
     const isFirstMessage = !conversationHistory || conversationHistory.length <= 1;
 
     const systemPrompt = isFirstMessage
-      ? `You are an expert DevOps engineer and cloud architect specializing in modern infrastructure-as-code. You're helping configure AWS infrastructure using SST (Serverless Stack).
+      ? `You are an expert DevOps engineer and cloud architect specializing in AWS infrastructure using SST (Serverless Stack).
 
 REPOSITORY CONTEXT:
 ${repoContext}
 
-YOUR TASK:
-1. Respond conversationally to acknowledge the user's requirements
-2. Generate production-ready SST v3 configuration
-3. Provide implementation guidance
-4. Generate IAM policy
+CRITICAL RULES:
+1. You ONLY help with AWS infrastructure and SST configuration
+2. If user asks about non-infrastructure topics (recipes, general questions, etc.), politely redirect them to infrastructure topics
+3. You MUST ALWAYS return the exact JSON format specified below - NO EXCEPTIONS
+4. Even for simple requests like "test prompt", generate proper infrastructure code
 
-CONVERSATION STYLE:
-- Be friendly and conversational
-- Explain your infrastructure decisions briefly
-- Ask clarifying questions if requirements are vague
-- Use technical language but keep it accessible
+YOUR TASK FOR EVERY REQUEST:
+1. Interpret the user's request in the context of AWS infrastructure
+2. Generate a complete, working SST v3 configuration
+3. Provide step-by-step implementation guidance
+4. Generate appropriate IAM policies
 
-RESPONSE FORMAT:
-Return ONLY a valid JSON response with this exact structure:
+RESPONSE FORMAT (MANDATORY):
+You MUST return ONLY valid JSON with these EXACT field names:
 {
-  "message": "Your conversational response here (2-3 sentences explaining what you've created)...",
-  "sstConfig": "// SST TypeScript configuration...",
-  "suggestedChanges": "# Implementation Guide\\n\\nDetailed steps...",
-  "iamPolicy": "# IAM policy JSON..."
-}`
+  "message": "Brief conversational response (2-3 sentences)",
+  "sstConfig": "Complete SST v3 TypeScript configuration",
+  "suggestedChanges": "Markdown implementation guide with steps",
+  "iamPolicy": "Complete IAM policy JSON"
+}
+
+Example: If user says "cheap short test", create a minimal Lambda+API Gateway setup for testing.
+Example: If user asks for a cupcake recipe, respond: "I only help with AWS infrastructure. Would you like me to create a serverless API for a recipe app instead?"`
       : `You are continuing a conversation about AWS infrastructure configuration using SST.
 
 REPOSITORY CONTEXT:
@@ -142,28 +145,35 @@ Return the same JSON format as before.`;
     const data = await response.json();
     const generatedContent = data.candidates[0].content.parts[0].text;
 
-    console.log('Generated content:', generatedContent);
+    console.log('Raw Gemini response:', generatedContent);
 
-    // Parse the JSON response from GPT
+    // Parse the JSON response from Gemini
     let parsedContent;
     try {
-      // Extract JSON from the response (in case it's wrapped in markdown)
-      const jsonMatch = generatedContent.match(/\{[\s\S]*\}/);
-      const jsonString = jsonMatch ? jsonMatch[0] : generatedContent;
-      parsedContent = JSON.parse(jsonString);
+      // Gemini with responseMimeType: "application/json" returns pure JSON
+      parsedContent = JSON.parse(generatedContent);
 
-      // Ensure message field exists for backward compatibility
-      if (!parsedContent.message) {
-        parsedContent.message = "I've generated your infrastructure configuration based on your requirements.";
+      // Validate required fields exist
+      if (!parsedContent.message || !parsedContent.sstConfig || !parsedContent.suggestedChanges || !parsedContent.iamPolicy) {
+        throw new Error('Missing required fields in response');
       }
-    } catch (parseError) {
-      console.error('Failed to parse OpenAI response:', parseError);
-      // Fallback with error message
+
+      console.log('Gemini response structure:', {
+        hasMessage: !!parsedContent.message,
+        hasSstConfig: !!parsedContent.sstConfig,
+        hasSuggestedChanges: !!parsedContent.suggestedChanges,
+        hasIamPolicy: !!parsedContent.iamPolicy,
+      });
+    } catch (parseError: any) {
+      console.error('Failed to parse Gemini response:', parseError);
+      console.error('Raw content was:', generatedContent);
+
+      // Return user-friendly error
       parsedContent = {
-        message: "I encountered an error generating your infrastructure. Please try again.",
-        sstConfig: `// Error parsing response\n// Raw content:\n${generatedContent}`,
-        suggestedChanges: "# Error\n\nCould not parse infrastructure generation response.",
-        iamPolicy: "# Error parsing response"
+        message: "I encountered an error generating your infrastructure. The response format was unexpected.",
+        sstConfig: "// Error generating configuration",
+        suggestedChanges: `# Error\n\nFailed to parse AI response. Please try again.\n\nError: ${parseError.message || 'Unknown error'}`,
+        iamPolicy: "{}"
       };
     }
 

@@ -1,0 +1,43 @@
+sequenceDiagram
+    actor User
+    participant Frontend as React Frontend
+    participant Auth as Supabase Auth
+    participant GitHub as GitHub API
+    participant DB as PostgreSQL
+    participant EdgeFn as generate-infrastructure
+    participant Gemini as Gemini API
+    participant Worker as Fly.io Worker
+    participant AWS as AWS (SST)
+
+    User->>Frontend: 1. Visit App
+    Frontend->>Auth: Login Request
+    Auth->>GitHub: OAuth Flow
+    GitHub-->>Auth: Access Token
+    Auth-->>Frontend: Session Cookie
+
+    User->>Frontend: 2. Select Repository
+    Frontend->>GitHub: List User Repos
+    GitHub-->>Frontend: Repository List
+    User->>Frontend: Choose Repo
+
+    User->>Frontend: 3. Describe Infrastructure<br/>"I need Lambda + API"
+    Frontend->>EdgeFn: POST /generate-infrastructure
+    Note over Frontend,EdgeFn: {conversationHistory, userMessage,<br/>repoName, repoUrl, selectedServices}
+
+    EdgeFn->>Gemini: Generate Code
+    Note over EdgeFn,Gemini: System Prompt +<br/>Conversation Context
+    Gemini-->>EdgeFn: JSON Response
+
+    EdgeFn->>DB: Save Conversation
+    EdgeFn-->>Frontend: {message, sstConfig,<br/>suggestedChanges, iamPolicy}
+
+    Frontend->>Frontend: Display Chat Message
+    Frontend->>Frontend: Show Code in Tabs
+
+    User->>Frontend: 4. Review & Deploy
+    Frontend->>EdgeFn: POST /deploy-project
+    EdgeFn->>Worker: Queue Deployment Job
+    Worker->>AWS: sst deploy --stage production
+    AWS-->>Worker: Deployment Result
+    Worker-->>Frontend: Status Update
+    Frontend-->>User: Show Deploy URL
