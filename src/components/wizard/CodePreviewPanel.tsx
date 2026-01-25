@@ -2,7 +2,7 @@ import { GeneratedArtifacts } from '@/types/chat';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Download, Code, Sparkles, Shield } from 'lucide-react';
+import { Copy, Download, Code, Sparkles, Shield, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface CodePreviewPanelProps {
@@ -11,6 +11,28 @@ interface CodePreviewPanelProps {
 
 const CodePreviewPanel = ({ artifacts }: CodePreviewPanelProps) => {
   const { toast } = useToast();
+
+  // Format JSON with proper indentation
+  const formatJson = (jsonString: string): string => {
+    try {
+      const parsed = JSON.parse(jsonString);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return jsonString;
+    }
+  };
+
+  // Format TypeScript/JavaScript code by adding line breaks
+  const formatCode = (code: string): string => {
+    // Add line breaks after common code patterns for better readability
+    return code
+      .replace(/;/g, ';\n')
+      .replace(/\{/g, '{\n')
+      .replace(/\}/g, '\n}\n')
+      .replace(/,(?!\s)/g, ',\n')
+      .replace(/\n\s*\n\s*\n/g, '\n\n') // Remove excessive blank lines
+      .trim();
+  };
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
@@ -91,8 +113,8 @@ const CodePreviewPanel = ({ artifacts }: CodePreviewPanelProps) => {
               </div>
             </CardHeader>
             <CardContent>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-x-auto font-mono">
-                <code>{artifacts.sstConfig}</code>
+              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-auto font-mono max-h-[500px]">
+                <code>{formatCode(artifacts.sstConfig)}</code>
               </pre>
             </CardContent>
           </Card>
@@ -180,16 +202,25 @@ const CodePreviewPanel = ({ artifacts }: CodePreviewPanelProps) => {
               <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <div className="flex items-start gap-2">
                   <Shield className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                  <div>
+                  <div className="flex-1">
                     <h4 className="font-medium text-amber-800 text-sm">AWS Setup Required</h4>
                     <p className="text-xs text-amber-700 mt-1">
                       Add this IAM policy to your AWS account to enable the deployment process.
                     </p>
+                    <a
+                      href="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_create-console.html#access_policies_create-json-editor"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-amber-800 hover:text-amber-900 underline mt-2"
+                    >
+                      View AWS IAM Documentation
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
                   </div>
                 </div>
               </div>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-x-auto font-mono">
-                <code>{artifacts.iamPolicy}</code>
+              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-auto font-mono max-h-[500px]">
+                <code>{formatJson(artifacts.iamPolicy)}</code>
               </pre>
             </CardContent>
           </Card>

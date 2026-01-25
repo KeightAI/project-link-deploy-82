@@ -94,24 +94,27 @@ Return the same JSON format as before.`;
 
     console.log('Generating infrastructure with Gemini...');
 
-    // Build prompt for Gemini
-    let geminiPrompt = systemPrompt + '\n\n';
+    // Build contents for Gemini API (matching AI Studio structure)
+    const contents = [];
 
     // Add conversation history if available
     if (conversationHistory && conversationHistory.length > 0) {
       conversationHistory.forEach((msg: any) => {
-        if (msg.role === 'user') {
-          geminiPrompt += `User: ${msg.content}\n\n`;
-        } else if (msg.role === 'assistant') {
-          geminiPrompt += `Assistant: ${msg.content}\n\n`;
-        }
+        contents.push({
+          role: msg.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: msg.content }]
+        });
       });
     } else {
-      // Old format - single message
-      geminiPrompt += `User: ${selectedServices && selectedServices.length > 0 ? `Selected AWS Services: ${selectedServices.join(', ')}\n\n` : ''}${currentMessage}\n\n`;
+      // Single user message
+      const userText = selectedServices && selectedServices.length > 0
+        ? `Selected AWS Services: ${selectedServices.join(', ')}\n\n${currentMessage}`
+        : currentMessage;
+      contents.push({
+        role: 'user',
+        parts: [{ text: userText }]
+      });
     }
-
-    geminiPrompt += 'Assistant: ';
 
     const response = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
@@ -122,15 +125,24 @@ Return the same JSON format as before.`;
           'x-goog-api-key': GEMINI_API_KEY,
         },
         body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: geminiPrompt
-            }]
-          }],
+          systemInstruction: {
+            parts: [{ text: systemPrompt }]
+          },
+          contents,
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 4000,
             responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                message: { type: "STRING" },
+                sstConfig: { type: "STRING" },
+                suggestedChanges: { type: "STRING" },
+                iamPolicy: { type: "STRING" }
+              },
+              required: ["message", "sstConfig", "suggestedChanges", "iamPolicy"]
+            }
           },
         }),
       }
