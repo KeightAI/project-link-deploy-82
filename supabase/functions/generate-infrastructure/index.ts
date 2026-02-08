@@ -38,12 +38,41 @@ serve(async (req) => {
     }
     console.log('Gemini API key found');
 
-    // Build repo context
+    // Build repo context with detailed analysis
     let repoContext = `- Repository: ${repoName} (${repoUrl})`;
     if (repoAnalysis) {
-      repoContext += `\n- Framework: ${repoAnalysis.framework || 'Unknown'}`;
+      // Framework
+      if (repoAnalysis.framework) {
+        repoContext += `\n- Framework: ${repoAnalysis.framework}`;
+      }
+
+      // Build tool
+      if (repoAnalysis.buildTool) {
+        repoContext += `\n- Build Tool: ${repoAnalysis.buildTool}`;
+      }
+
+      // Build command
+      if (repoAnalysis.buildCommand) {
+        repoContext += `\n- Build Command: ${repoAnalysis.buildCommand}`;
+      }
+
+      // Output directory
+      if (repoAnalysis.outputDir) {
+        repoContext += `\n- Output Directory: ${repoAnalysis.outputDir}`;
+      }
+
+      // Dependencies (limit to top 15 to avoid overwhelming the prompt)
       if (repoAnalysis.dependencies && repoAnalysis.dependencies.length > 0) {
-        repoContext += `\n- Dependencies: ${repoAnalysis.dependencies.join(', ')}`;
+        const topDeps = repoAnalysis.dependencies.slice(0, 15);
+        repoContext += `\n- Key Dependencies (${topDeps.length}/${repoAnalysis.dependencies.length}): ${topDeps.join(', ')}`;
+        if (repoAnalysis.dependencies.length > 15) {
+          repoContext += ` ...and ${repoAnalysis.dependencies.length - 15} more`;
+        }
+      }
+
+      // Analysis timestamp
+      if (repoAnalysis.analyzedAt) {
+        repoContext += `\n- Last analyzed: ${repoAnalysis.analyzedAt}`;
       }
     }
 

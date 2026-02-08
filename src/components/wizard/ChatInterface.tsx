@@ -4,9 +4,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Rocket, Info, X } from 'lucide-react';
+import { Rocket, Info, X, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
@@ -42,9 +43,11 @@ const ChatInterface = ({
     createEmptyConversation(selectedRepo.id)
   );
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showCodePanel, setShowCodePanel] = useState(false);
   const [showInfoBanner, setShowInfoBanner] = useState(true);
   const { toast } = useToast();
+  const { session } = useAuth();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Initialize with welcome message
@@ -61,6 +64,54 @@ const ChatInterface = ({
       onConversationUpdate(updatedConversation);
     }
   }, []);
+
+  // Analyze repository when selected
+  useEffect(() => {
+    const analyzeRepository = async () => {
+      if (!selectedRepo?.github_repo_url || !session?.provider_token) {
+        return;
+      }
+
+      setIsAnalyzing(true);
+
+      try {
+        const { data, error } = await supabase.functions.invoke('analyze-repository', {
+          body: {
+            repoUrl: selectedRepo.github_repo_url,
+            githubToken: session.provider_token,
+          },
+        });
+
+        if (error) {
+          console.error('Repository analysis error:', error);
+          toast({
+            title: 'Analysis Warning',
+            description: 'Could not analyze repository structure. Continuing with basic context.',
+            variant: 'default',
+          });
+        } else if (data) {
+          console.log('Repository analysis complete:', data);
+          setConversation((prev) => ({
+            ...prev,
+            repoAnalysis: data,
+          }));
+
+          if (data.framework || data.buildTool) {
+            toast({
+              title: 'Repository Analyzed',
+              description: `Detected: ${data.framework || 'Unknown framework'}${data.buildTool ? ` with ${data.buildTool}` : ''}`,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to analyze repository:', err);
+      } finally {
+        setIsAnalyzing(false);
+      }
+    };
+
+    analyzeRepository();
+  }, [selectedRepo, session]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -194,8 +245,23 @@ const ChatInterface = ({
             </div>
           </div>
 
+          {/* Repository Analysis Loading */}
+          {isAnalyzing && (
+            <div className="p-3 mx-4 mt-4 bg-purple-50 border border-purple-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <Loader2 className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0 animate-spin" />
+                <div className="flex-1 text-xs text-purple-800">
+                  <p className="font-medium">Analyzing repository structure...</p>
+                  <p className="mt-1">
+                    Detecting framework, build tools, and dependencies from your codebase.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Info Banner */}
-          {!showCodePanel && showInfoBanner && (
+          {!showCodePanel && showInfoBanner && !isAnalyzing && (
             <div className="p-3 mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-start gap-2">
                 <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
