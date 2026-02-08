@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import RepoSelection from '@/components/wizard/RepoSelection';
 import ChatInterface from '@/components/wizard/ChatInterface';
+import ProjectForm from '@/components/ProjectForm';
 import { ConversationState } from '@/types/chat';
 
 interface Project {
@@ -32,6 +33,7 @@ const DeploymentWizard = () => {
   const [wizardData, setWizardData] = useState<WizardData>({});
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -66,6 +68,37 @@ const DeploymentWizard = () => {
 
   const updateWizardData = (data: Partial<WizardData>) => {
     setWizardData(prev => ({ ...prev, ...data }));
+  };
+
+  const handleCreateProject = async (projectData: {
+    name: string;
+    description: string;
+    github_repo_url: string;
+    github_repo_id: string;
+    branch_name: string;
+    is_deployed: boolean;
+  }) => {
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .insert([{ ...projectData, user_id: user?.id }]);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Project created successfully",
+      });
+
+      setIsFormOpen(false);
+      fetchProjects();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleNext = () => {
@@ -204,7 +237,7 @@ const DeploymentWizard = () => {
                 projects={projects}
                 selectedRepo={wizardData.selectedRepo}
                 onSelectRepo={(repo) => updateWizardData({ selectedRepo: repo })}
-                onAddNew={() => navigate('/dashboard')}
+                onAddNew={() => setIsFormOpen(true)}
               />
             </CardContent>
           </Card>
@@ -262,6 +295,13 @@ const DeploymentWizard = () => {
           )}
         </div>
       </main>
+
+      <ProjectForm
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        onSubmit={handleCreateProject}
+        project={null}
+      />
     </div>
   );
 };
