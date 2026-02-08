@@ -49,6 +49,7 @@ const ChatInterface = ({
   const { toast } = useToast();
   const { session } = useAuth();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const hasAnalyzed = useRef(false);
 
   // Initialize with welcome message
   useEffect(() => {
@@ -65,13 +66,19 @@ const ChatInterface = ({
     }
   }, []);
 
-  // Analyze repository when selected
+  // Analyze repository when component mounts (only once)
   useEffect(() => {
     const analyzeRepository = async () => {
+      // Only run once
+      if (hasAnalyzed.current) {
+        return;
+      }
+
       if (!selectedRepo?.github_repo_url || !session?.provider_token) {
         return;
       }
 
+      hasAnalyzed.current = true;
       setIsAnalyzing(true);
 
       try {
@@ -111,7 +118,7 @@ const ChatInterface = ({
     };
 
     analyzeRepository();
-  }, [selectedRepo, session]);
+  }, [selectedRepo, session, toast]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
