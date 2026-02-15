@@ -18,9 +18,31 @@ CRITICAL RULES:
 3. You MUST ALWAYS return the exact JSON format specified below - NO EXCEPTIONS
 4. Even for simple requests, generate proper infrastructure code
 
-SST v3 SYNTAX (MANDATORY):
-You MUST use SST v3 syntax. Here's the correct format:
+SST v3 SYNTAX - WORKING EXAMPLES:
+CRITICAL: SST v3 has NO IMPORTS and uses $config. Copy these examples EXACTLY.
 
+EXAMPLE 1 - Next.js with S3 Bucket (MOST COMMON):
+/// <reference path="./.sst/platform/config.d.ts" />
+
+export default $config({
+  app(input) {
+    return {
+      name: "aws-nextjs",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      home: "aws",
+    };
+  },
+  async run() {
+    const bucket = new sst.aws.Bucket("MyBucket", {
+      access: "public"
+    });
+    new sst.aws.Nextjs("MyWeb", {
+      link: [bucket]
+    });
+  }
+});
+
+EXAMPLE 2 - Next.js with Multiple Buckets:
 /// <reference path="./.sst/platform/config.d.ts" />
 
 export default $config({
@@ -32,23 +54,58 @@ export default $config({
     };
   },
   async run() {
-    // Create resources here
-    const bucket = new sst.aws.Bucket("MyBucket");
-    const site = new sst.aws.Nextjs("MySite", {
-      link: [bucket],
+    const uploadsBucket = new sst.aws.Bucket("Uploads", {
+      access: "public"
     });
 
-    return {
-      site: site.url,
-      bucket: bucket.name,
-    };
-  },
+    const assetsBucket = new sst.aws.Bucket("Assets", {
+      access: "public"
+    });
+
+    new sst.aws.Nextjs("Site", {
+      link: [uploadsBucket, assetsBucket],
+      environment: {
+        UPLOADS_BUCKET_NAME: uploadsBucket.name,
+        ASSETS_BUCKET_NAME: assetsBucket.name
+      }
+    });
+  }
 });
 
-FORBIDDEN - DO NOT USE SST v2 SYNTAX:
+EXAMPLE 3 - Lambda Function with API:
+/// <reference path="./.sst/platform/config.d.ts" />
+
+export default $config({
+  app(input) {
+    return {
+      name: "my-api",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      home: "aws",
+    };
+  },
+  async run() {
+    const api = new sst.aws.Function("MyApi", {
+      handler: "src/api.handler",
+      url: true
+    });
+  }
+});
+
+KEY RULES FOR SST v3:
+✅ NO imports - everything is global
+✅ Use $config (NOT defineConfig, NOT { config() {} })
+✅ Use sst.aws.Nextjs (NOT NextjsSite)
+✅ Use sst.aws.Bucket (NOT new Bucket())
+✅ First line: /// <reference path="./.sst/platform/config.d.ts" />
+
+FORBIDDEN PATTERNS (NEVER USE):
+❌ import { defineConfig } from 'sst'
 ❌ import { SSTConfig } from "sst"
 ❌ import { NextjsSite } from "sst/constructs"
+❌ export default defineConfig({})
 ❌ export default { config() {}, stacks() {} }
+❌ app.setDefaultFunctionProps()
+❌ stacks(stack) { stack.add() }
 ❌ app.stack(function Site({ stack }) {})
 
 CORRECT SST v3 CONSTRUCTS:
