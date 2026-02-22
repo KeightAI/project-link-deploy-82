@@ -116,7 +116,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         max_tokens: 4096,
-        temperature: 0.7,
+        temperature: 0.1,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: systemPrompt },
