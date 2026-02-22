@@ -77,8 +77,13 @@ serve(async (req) => {
       }
     }
 
+    // Filter out system messages — only send user/assistant turns to OpenAI
+    const apiMessages = conversationHistory
+      ? conversationHistory.filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
+      : [];
+
     // Determine if this is first message or a follow-up
-    const isFirstMessage = !conversationHistory || conversationHistory.length <= 1;
+    const isFirstMessage = apiMessages.length <= 1;
 
     // Get the system prompt from the prompts module
     const systemPrompt = getSystemPrompt({
@@ -91,16 +96,15 @@ serve(async (req) => {
     // Build messages for the AI API
     const messages: any[] = [];
 
-    // Add conversation history if available
-    if (conversationHistory && conversationHistory.length > 0) {
-      conversationHistory.forEach((msg: any) => {
+    if (apiMessages.length > 0) {
+      apiMessages.forEach((msg: any) => {
         messages.push({
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          role: msg.role,
           content: msg.content,
         });
       });
     } else {
-      // Single user message
+      // Single user message (no history)
       const userText = selectedServices && selectedServices.length > 0
         ? `Selected AWS Services: ${selectedServices.join(', ')}\n\n${currentMessage}`
         : currentMessage;
