@@ -31,13 +31,13 @@ serve(async (req) => {
     // Use new format or fall back to old format
     const currentMessage = userMessage || prompt;
 
-    console.log('Checking for OpenAI API key...');
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      console.error('OpenAI API key not found in environment');
-      throw new Error('OpenAI API key not found');
+    console.log('Checking for AI API key...');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      console.error('AI API key not found in environment');
+      throw new Error('AI API key not found');
     }
-    console.log('OpenAI API key found');
+    console.log('AI API key found');
 
     // Build repo context with detailed analysis
     let repoContext = `- Repository: ${repoName} (${repoUrl})`;
@@ -77,7 +77,7 @@ serve(async (req) => {
       }
     }
 
-    // Filter out system messages — only send user/assistant turns to OpenAI
+    // Filter out system messages — only send user/assistant turns to the AI
     const apiMessages = conversationHistory
       ? conversationHistory.filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
       : [];
@@ -99,8 +99,8 @@ serve(async (req) => {
     if (apiMessages.length > 0) {
       apiMessages.forEach((msg: any) => {
         messages.push({
-          role: msg.role,
-          content: msg.content,
+          role: msg.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: msg.content }],
         });
       });
     } else {
@@ -108,26 +108,24 @@ serve(async (req) => {
       const userText = selectedServices && selectedServices.length > 0
         ? `Selected AWS Services: ${selectedServices.join(', ')}\n\n${currentMessage}`
         : currentMessage;
-      messages.push({ role: 'user', content: userText });
+      messages.push({ role: 'user', parts: [{ text: userText }] });
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        max_tokens: 4096,
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...messages,
-        ],
-      }),
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: messages,
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorData = await response.text();
@@ -136,10 +134,10 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const generatedContent = data.choices[0].message.content;
+    const generatedContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!generatedContent) {
-      throw new Error(`No content in AI response. finish_reason: ${data.choices[0].finish_reason}`);
+      throw new Error(`No content in AI response. finishReason: ${data.candidates?.[0]?.finishReason}`);
     }
 
     // Parse the JSON response
