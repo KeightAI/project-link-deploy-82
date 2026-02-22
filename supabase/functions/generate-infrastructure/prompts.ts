@@ -232,5 +232,11 @@ YOUR TASK:
 4. Use SST v3 syntax (sst.aws.* constructs, $config format)
 5. Ensure IAM policies include deployment permissions
 
-Return the same JSON format as before.`;
+RESPONSE FORMAT (MANDATORY) - you MUST return exactly these keys:
+{
+  "message": "Brief conversational response (2-3 sentences)",
+  "sstConfig": "Complete SST v3 TypeScript configuration with proper formatting",
+  "suggestedChanges": "Markdown implementation guide with steps",
+  "iamPolicy": "Complete IAM policy JSON with both deployment AND application permissions"
+}`;
 }

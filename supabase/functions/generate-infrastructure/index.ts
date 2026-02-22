@@ -134,6 +134,10 @@ serve(async (req) => {
     const data = await response.json();
     const generatedContent = data.choices[0].message.content;
 
+    if (!generatedContent) {
+      throw new Error(`No content in AI response. finish_reason: ${data.choices[0].finish_reason}`);
+    }
+
     // Parse the JSON response
     let parsedContent;
     try {
@@ -141,6 +145,7 @@ serve(async (req) => {
 
       // Validate required fields exist
       if (!parsedContent.message || !parsedContent.sstConfig || !parsedContent.suggestedChanges || !parsedContent.iamPolicy) {
+        console.error('Missing fields. Got keys:', Object.keys(parsedContent));
         throw new Error('Missing required fields in response');
       }
 
