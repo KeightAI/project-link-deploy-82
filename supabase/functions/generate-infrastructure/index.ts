@@ -31,13 +31,13 @@ serve(async (req) => {
     // Use new format or fall back to old format
     const currentMessage = userMessage || prompt;
 
-    console.log('Checking for Gemini API key...');
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) {
-      console.error('Gemini API key not found in environment');
-      throw new Error('Gemini API key not found');
+    console.log('Checking for OpenAI API key...');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    if (!OPENAI_API_KEY) {
+      console.error('OpenAI API key not found in environment');
+      throw new Error('OpenAI API key not found');
     }
-    console.log('Gemini API key found');
+    console.log('OpenAI API key found');
 
     // Build repo context with detailed analysis
     let repoContext = `- Repository: ${repoName} (${repoUrl})`;
@@ -86,17 +86,17 @@ serve(async (req) => {
       isFirstMessage
     });
 
-    console.log('Generating infrastructure with Gemini...');
+    console.log('Generating infrastructure...');
 
-    // Build contents for Gemini API (matching AI Studio structure)
-    const contents = [];
+    // Build messages for the AI API
+    const messages: any[] = [];
 
     // Add conversation history if available
     if (conversationHistory && conversationHistory.length > 0) {
       conversationHistory.forEach((msg: any) => {
-        contents.push({
-          role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: msg.content }]
+        messages.push({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: msg.content,
         });
       });
     } else {
@@ -104,59 +104,39 @@ serve(async (req) => {
       const userText = selectedServices && selectedServices.length > 0
         ? `Selected AWS Services: ${selectedServices.join(', ')}\n\n${currentMessage}`
         : currentMessage;
-      contents.push({
-        role: 'user',
-        parts: [{ text: userText }]
-      });
+      messages.push({ role: 'user', content: userText });
     }
 
-    const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': GEMINI_API_KEY,
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemPrompt }]
-          },
-          contents,
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 4000,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                message: { type: "STRING" },
-                sstConfig: { type: "STRING" },
-                suggestedChanges: { type: "STRING" },
-                iamPolicy: { type: "STRING" }
-              },
-              required: ["message", "sstConfig", "suggestedChanges", "iamPolicy"]
-            }
-          },
-        }),
-      }
-    );
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 4096,
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...messages,
+        ],
+      }),
+    });
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('Gemini API error:', errorData);
-      throw new Error(`Gemini API error: ${response.status}`);
+      console.error('AI engine error:', errorData);
+      throw new Error(`AI engine error: ${response.status}`);
     }
 
     const data = await response.json();
-    const generatedContent = data.candidates[0].content.parts[0].text;
+    const generatedContent = data.choices[0].message.content;
 
-    console.log('Raw Gemini response:', generatedContent);
-
-    // Parse the JSON response from Gemini
+    // Parse the JSON response
     let parsedContent;
     try {
-      // Gemini with responseMimeType: "application/json" returns pure JSON
       parsedContent = JSON.parse(generatedContent);
 
       // Validate required fields exist
@@ -164,14 +144,14 @@ serve(async (req) => {
         throw new Error('Missing required fields in response');
       }
 
-      console.log('Gemini response structure:', {
+      console.log('AI response structure:', {
         hasMessage: !!parsedContent.message,
         hasSstConfig: !!parsedContent.sstConfig,
         hasSuggestedChanges: !!parsedContent.suggestedChanges,
         hasIamPolicy: !!parsedContent.iamPolicy,
       });
     } catch (parseError: any) {
-      console.error('Failed to parse Gemini response:', parseError);
+      console.error('Failed to parse AI engine response:', parseError);
       console.error('Raw content was:', generatedContent);
 
       // Return user-friendly error
@@ -192,7 +172,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       error: error.message,
       message: "I encountered an error while generating your infrastructure. Please try again.",
-      sstConfig: "// Error generating SST configuration",
+      sstConfig: "// Error generating configuration",
       suggestedChanges: "# Error\n\nFailed to generate suggested changes.",
       iamPolicy: "# Error generating IAM policy"
     }), {
