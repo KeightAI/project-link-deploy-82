@@ -219,10 +219,14 @@ const ChatInterface = ({
   };
 
   const handlePushToGithub = async (sstConfig: string) => {
+    const { data: { session: freshSession } } = await supabase.auth.getSession();
+    if (!freshSession?.provider_token) {
+      throw new Error('No GitHub token found. Please sign in with GitHub again.');
+    }
     await writeFileToRepo(
       selectedRepo.github_repo_url || '',
       sstConfig,
-      session?.provider_token || '',
+      freshSession.provider_token,
       selectedRepo.branch_name || 'main'
     );
   };
