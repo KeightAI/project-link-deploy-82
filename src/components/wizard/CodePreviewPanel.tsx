@@ -106,7 +106,7 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
         <TabsList className="w-full justify-start px-4 bg-white border-b rounded-none">
           <TabsTrigger value="sst">SST Config</TabsTrigger>
           <TabsTrigger value="changes">Implementation Guide</TabsTrigger>
-          <TabsTrigger value="iam">Example IAM Policy</TabsTrigger>
+          <TabsTrigger value="iam">IAM Policy</TabsTrigger>
         </TabsList>
 
         {/* SST Config Tab */}
@@ -221,10 +221,10 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
                 <div>
                   <CardTitle className="text-base flex items-center gap-2">
                     <Shield className="h-4 w-4" />
-                    IAM Policy
+                    Example IAM Policy
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    AWS permissions required for deployment
+                    Suggested AWS permissions for SST deployment — adjust as needed
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
