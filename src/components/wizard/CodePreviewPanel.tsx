@@ -113,14 +113,14 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
         <TabsContent value="sst" className="flex-1 overflow-auto m-0 p-4">
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div>
                   <CardTitle className="text-base">SST Configuration</CardTitle>
                   <CardDescription className="text-xs">
                     Infrastructure as code using SST v3
                   </CardDescription>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button
                     variant="outline"
                     size="sm"
