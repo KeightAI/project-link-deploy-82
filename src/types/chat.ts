@@ -3,7 +3,7 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 export interface GeneratedArtifacts {
   sstConfig: string;
   suggestedChanges: string;
-  iamPolicy: string;
+  iamPolicy?: string;
 }
 
 export interface ChatMessage {

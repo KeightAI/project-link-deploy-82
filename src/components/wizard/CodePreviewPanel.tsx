@@ -11,19 +11,44 @@ interface CodePreviewPanelProps {
   onPushToGithub?: (sstConfig: string) => Promise<void>;
 }
 
+const STATIC_IAM_POLICY = JSON.stringify({
+  Version: "2012-10-17",
+  Statement: [
+    {
+      Sid: "SSTBootstrap",
+      Effect: "Allow",
+      Action: ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter"],
+      Resource: "arn:aws:ssm:*:*:parameter/sst/*"
+    },
+    {
+      Sid: "SSTDeploy",
+      Effect: "Allow",
+      Action: ["cloudformation:*", "s3:*", "cloudfront:*", "logs:*", "lambda:*", "apigateway:*", "ecr:*", "sts:AssumeRole"],
+      Resource: "*"
+    },
+    {
+      Sid: "IAMRolesOnly",
+      Effect: "Allow",
+      Action: [
+        "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:PassRole", "iam:UpdateRole",
+        "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+        "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies",
+        "iam:TagRole", "iam:UntagRole", "iam:CreateServiceLinkedRole", "iam:UpdateAssumeRolePolicy"
+      ],
+      Resource: "*"
+    },
+    {
+      Sid: "CommonAppServices",
+      Effect: "Allow",
+      Action: ["dynamodb:*", "sqs:*", "sns:*"],
+      Resource: "*"
+    }
+  ]
+}, null, 2);
+
 const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) => {
   const { toast } = useToast();
   const [isPushing, setIsPushing] = useState(false);
-
-  // Format JSON with proper indentation
-  const formatJson = (jsonString: string): string => {
-    try {
-      const parsed = JSON.parse(jsonString);
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return jsonString;
-    }
-  };
 
   // Format TypeScript/JavaScript code by adding line breaks
   const formatCode = (code: string): string => {
@@ -81,7 +106,7 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
         <TabsList className="w-full justify-start px-4 bg-white border-b rounded-none">
           <TabsTrigger value="sst">SST Config</TabsTrigger>
           <TabsTrigger value="changes">Implementation Guide</TabsTrigger>
-          <TabsTrigger value="iam">IAM Policy</TabsTrigger>
+          <TabsTrigger value="iam">Example IAM Policy</TabsTrigger>
         </TabsList>
 
         {/* SST Config Tab */}
@@ -206,7 +231,7 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => copyToClipboard(artifacts.iamPolicy, 'IAM policy')}
+                    onClick={() => copyToClipboard(STATIC_IAM_POLICY, 'IAM policy')}
                   >
                     <Copy className="h-3 w-3 mr-1" />
                     Copy
@@ -214,7 +239,7 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => downloadFile(artifacts.iamPolicy, 'iam-policy.json')}
+                    onClick={() => downloadFile(STATIC_IAM_POLICY, 'iam-policy.json')}
                   >
                     <Download className="h-3 w-3 mr-1" />
                     Download
@@ -244,7 +269,7 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
                 </div>
               </div>
               <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-auto font-mono max-h-[500px]">
-                <code>{formatJson(artifacts.iamPolicy)}</code>
+                <code>{STATIC_IAM_POLICY}</code>
               </pre>
             </CardContent>
           </Card>

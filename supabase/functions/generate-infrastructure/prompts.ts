@@ -131,94 +131,11 @@ CORRECT SST v3 CONSTRUCTS (see https://sst.dev/docs/component/aws/):
 
 For component-specific options and properties, reference the official docs above.
 
-IAM POLICY REQUIREMENTS:
-Generate COMPREHENSIVE IAM policies that include:
-
-1. DEPLOYMENT PERMISSIONS (SST needs these to deploy):
-   - cloudformation:* (stack operations)
-   - iam:* (role creation and management)
-   - lambda:* (function deployment)
-   - s3:* (deployment + app buckets)
-   - cloudfront:* (CDN distribution)
-   - logs:* (CloudWatch logs)
-   - apigateway:* (HTTP APIs)
-   - ecr:* (container images)
-   - sts:AssumeRole (role assumption)
-
-2. SST METADATA STORAGE:
-   - ssm:GetParameter, ssm:PutParameter, ssm:DeleteParameter
-   - Resource: arn:aws:ssm:REGION:ACCOUNT_ID:parameter/sst/*
-
-3. COMMON APPLICATION SERVICES (include based on context):
-   - dynamodb:* (NoSQL database)
-   - sqs:* (message queues)
-   - sns:* (pub/sub messaging)
-   - appsync:* (GraphQL APIs)
-   - cognito-idp:* (authentication)
-   - ses:* (email sending)
-   - cloudfront-keyvaluestore:* (edge KV store)
-
-4. APPLICATION-SPECIFIC PERMISSIONS:
-   - Add permissions for services user specifically requests
-   - Use resource-specific ARNs when possible
-
-EXAMPLE COMPLETE IAM POLICY:
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "SSTBootstrap",
-      "Effect": "Allow",
-      "Action": [
-        "ssm:GetParameter",
-        "ssm:PutParameter",
-        "ssm:DeleteParameter"
-      ],
-      "Resource": [
-        "arn:aws:ssm:*:*:parameter/sst/*"
-      ]
-    },
-    {
-      "Sid": "SSTDeployment",
-      "Effect": "Allow",
-      "Action": [
-        "cloudformation:*",
-        "iam:*",
-        "lambda:*",
-        "s3:*",
-        "cloudfront:*",
-        "logs:*",
-        "apigateway:*",
-        "ecr:*",
-        "sts:AssumeRole"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "ApplicationServices",
-      "Effect": "Allow",
-      "Action": [
-        "dynamodb:*",
-        "sqs:*",
-        "sns:*"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "AppSpecificResources",
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::APP_NAME-*/*"
-    }
-  ]
-}
-
 RESPONSE FORMAT (MANDATORY):
 {
   "message": "Brief conversational response (2-3 sentences)",
   "sstConfig": "Complete SST v3 TypeScript configuration with proper formatting",
-  "suggestedChanges": "Markdown implementation guide with steps",
-  "iamPolicy": "Complete IAM policy JSON with both deployment AND application permissions"
+  "suggestedChanges": "Markdown implementation guide with steps"
 }`;
   }
 
@@ -232,13 +149,11 @@ YOUR TASK:
 2. Update the infrastructure configuration as needed
 3. Maintain consistency with previous decisions
 4. Use SST v3 syntax (sst.aws.* constructs, $config format)
-5. Ensure IAM policies include deployment permissions
 
 RESPONSE FORMAT (MANDATORY) - you MUST return exactly these keys:
 {
   "message": "Brief conversational response (2-3 sentences)",
   "sstConfig": "Complete SST v3 TypeScript configuration with proper formatting",
-  "suggestedChanges": "Markdown implementation guide with steps",
-  "iamPolicy": "Complete IAM policy JSON with both deployment AND application permissions"
+  "suggestedChanges": "Markdown implementation guide with steps"
 }`;
 }

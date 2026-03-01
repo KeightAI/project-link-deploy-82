@@ -148,17 +148,10 @@ serve(async (req) => {
       parsedContent = JSON.parse(generatedContent);
 
       // Validate required fields exist
-      if (!parsedContent.message || !parsedContent.sstConfig || !parsedContent.suggestedChanges || !parsedContent.iamPolicy) {
+      if (!parsedContent.message || !parsedContent.sstConfig || !parsedContent.suggestedChanges) {
         console.error('Missing fields. Got keys:', Object.keys(parsedContent));
         throw new Error('Missing required fields in response');
       }
-
-      console.log('AI response structure:', {
-        hasMessage: !!parsedContent.message,
-        hasSstConfig: !!parsedContent.sstConfig,
-        hasSuggestedChanges: !!parsedContent.suggestedChanges,
-        hasIamPolicy: !!parsedContent.iamPolicy,
-      });
     } catch (parseError: any) {
       console.error('Failed to parse AI engine response:', parseError);
       console.error('Raw content was:', generatedContent);
