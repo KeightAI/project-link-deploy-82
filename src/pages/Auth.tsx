@@ -38,7 +38,8 @@ const Auth = () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: `${window.location.origin}/dashboard`
+        redirectTo: `${window.location.origin}/dashboard`,
+        scopes: 'repo'
       }
     })
     if (error) console.error('Error logging in:', error.message)
