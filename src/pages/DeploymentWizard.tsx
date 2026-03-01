@@ -278,7 +278,7 @@ const DeploymentWizard = () => {
             <Button
               onClick={handleFinish}
               disabled={!canProceed()}
-              className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
+              className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-6 text-lg"
             >
               <CheckCircle className="h-4 w-4 mr-2" />
               Save Configuration
@@ -287,7 +287,7 @@ const DeploymentWizard = () => {
             <Button
               onClick={handleNext}
               disabled={!canProceed()}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-8 py-6 text-lg"
             >
               Next
               <ArrowRight className="h-4 w-4 ml-2" />

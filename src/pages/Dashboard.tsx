@@ -308,7 +308,7 @@ const Dashboard = () => {
       <div className="fixed bottom-6 right-6 z-50">
         <Button
           onClick={() => navigate('/deployment-wizard')}
-          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 rounded-full px-8 py-4 text-base flex items-center gap-2"
+          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 rounded-full px-8 py-6 text-lg flex items-center gap-2"
         >
           <Zap className="h-6 w-6" />
           Deployment Wizard

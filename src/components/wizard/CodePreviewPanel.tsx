@@ -141,6 +141,7 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
                     <Button
                       variant="outline"
                       size="sm"
+                      className="border-blue-500 text-blue-600 hover:bg-blue-50 ring-1 ring-blue-400"
                       disabled={isPushing}
                       onClick={async () => {
                         setIsPushing(true);
