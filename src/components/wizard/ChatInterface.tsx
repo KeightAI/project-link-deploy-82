@@ -20,6 +20,7 @@ import {
   createAssistantMessage,
   createSystemMessage,
 } from '@/types/chat';
+import { writeFileToRepo } from '@/services/githubApi';
 
 interface Project {
   id: string;
@@ -217,6 +218,15 @@ const ChatInterface = ({
     }
   };
 
+  const handlePushToGithub = async (sstConfig: string) => {
+    await writeFileToRepo(
+      selectedRepo.github_repo_url || '',
+      sstConfig,
+      session?.provider_token || '',
+      selectedRepo.branch_name || 'main'
+    );
+  };
+
   // Check if there's a latest message that's being generated
   const isLastMessageGenerating =
     isGenerating && conversation.messages[conversation.messages.length - 1]?.role === 'user';
@@ -314,7 +324,7 @@ const ChatInterface = ({
         <>
           <ResizableHandle withHandle />
           <ResizablePanel defaultSize={45} minSize={30}>
-            <CodePreviewPanel artifacts={conversation.latestArtifacts} />
+            <CodePreviewPanel artifacts={conversation.latestArtifacts} onPushToGithub={handlePushToGithub} />
           </ResizablePanel>
         </>
       )}

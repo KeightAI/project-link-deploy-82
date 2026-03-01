@@ -2,15 +2,18 @@ import { GeneratedArtifacts } from '@/types/chat';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Download, Code, Sparkles, Shield, ExternalLink } from 'lucide-react';
+import { Copy, Download, Code, Sparkles, Shield, ExternalLink, GitBranch, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useState } from 'react';
 
 interface CodePreviewPanelProps {
   artifacts: GeneratedArtifacts;
+  onPushToGithub?: (sstConfig: string) => Promise<void>;
 }
 
-const CodePreviewPanel = ({ artifacts }: CodePreviewPanelProps) => {
+const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) => {
   const { toast } = useToast();
+  const [isPushing, setIsPushing] = useState(false);
 
   // Format JSON with proper indentation
   const formatJson = (jsonString: string): string => {
@@ -109,6 +112,27 @@ const CodePreviewPanel = ({ artifacts }: CodePreviewPanelProps) => {
                     <Download className="h-3 w-3 mr-1" />
                     Download
                   </Button>
+                  {onPushToGithub && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isPushing}
+                      onClick={async () => {
+                        setIsPushing(true);
+                        try {
+                          await onPushToGithub(artifacts.sstConfig);
+                          toast({ title: 'Pushed to GitHub', description: 'sst.config.ts committed to your repo' });
+                        } catch (e) {
+                          toast({ title: 'Push failed', description: (e as Error).message, variant: 'destructive' });
+                        } finally {
+                          setIsPushing(false);
+                        }
+                      }}
+                    >
+                      {isPushing ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <GitBranch className="h-3 w-3 mr-1" />}
+                      Push to GitHub
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>

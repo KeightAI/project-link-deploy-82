@@ -69,3 +69,46 @@ export const fetchUserRepositories = async (): Promise<GitHubRepo[]> => {
     throw error;
   }
 };
+
+export const writeFileToRepo = async (
+  repoUrl: string,
+  content: string,
+  token: string,
+  branch: string = 'main'
+): Promise<void> => {
+  const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+  if (!match) throw new Error('Invalid GitHub repo URL');
+  const [, owner, repo] = match;
+  const repoName = repo.replace(/\.git$/, '');
+  const filePath = 'sst.config.ts';
+  const apiBase = `https://api.github.com/repos/${owner}/${repoName}/contents/${filePath}`;
+  const headers = {
+    Authorization: `token ${token}`,
+    Accept: 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json',
+  };
+
+  // Check if file exists to get its SHA (required for updates)
+  let sha: string | undefined;
+  const getRes = await fetch(`${apiBase}?ref=${branch}`, { headers });
+  if (getRes.ok) {
+    const existing = await getRes.json();
+    sha = existing.sha;
+  }
+
+  const putRes = await fetch(apiBase, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({
+      message: sha ? 'chore: update sst.config.ts via Keight' : 'chore: add sst.config.ts via Keight',
+      content: btoa(String.fromCharCode(...Array.from(new TextEncoder().encode(content)))),
+      branch,
+      ...(sha ? { sha } : {}),
+    }),
+  });
+
+  if (!putRes.ok) {
+    const err = await putRes.json();
+    throw new Error(err.message || `GitHub API error: ${putRes.status}`);
+  }
+};
