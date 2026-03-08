@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { fetchUserRepositories, GitHubRepo } from '@/services/githubApi';
 import { useToast } from '@/hooks/use-toast';
-import { Github, Lock, Unlock } from 'lucide-react';
+import { Github, Lock, Unlock, AlertTriangle } from 'lucide-react';
 
 interface Project {
   id: string;
@@ -41,6 +41,8 @@ interface ProjectFormProps {
   }) => void;
   project?: Project | null;
 }
+
+const NAME_MAX = 20;
 
 const ProjectForm = ({ isOpen, onClose, onSubmit, project }: ProjectFormProps) => {
   const [name, setName] = useState('');
@@ -105,11 +107,20 @@ const ProjectForm = ({ isOpen, onClose, onSubmit, project }: ProjectFormProps) =
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedRepo && !project) {
       toast({
         title: "Error",
         description: "Please select a repository",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (name.length > NAME_MAX) {
+      toast({
+        title: "Name too long",
+        description: `Project name must be ${NAME_MAX} characters or fewer (used for AWS resource naming).`,
         variant: "destructive",
       });
       return;
@@ -167,8 +178,29 @@ const ProjectForm = ({ isOpen, onClose, onSubmit, project }: ProjectFormProps) =
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              className={name.length > NAME_MAX ? 'border-red-400 focus-visible:ring-red-400' : ''}
               required
             />
+            <p className={`text-xs mt-1 ${name.length > NAME_MAX ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+              {name.length}/{NAME_MAX} characters
+            </p>
+            {name.length > NAME_MAX && (
+              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-red-700">
+                    <p className="font-medium">Name is {name.length - NAME_MAX} character{name.length - NAME_MAX > 1 ? 's' : ''} over the limit</p>
+                    <p className="mt-1 text-red-600">
+                      This name is used to generate AWS resource names (Lambda functions, CloudFormation stacks, IAM roles).
+                      AWS enforces strict character limits on these resources, and a long project name will cause deployment failures.
+                    </p>
+                    <p className="mt-1 text-red-600">
+                      Please shorten it to {NAME_MAX} characters or fewer.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           
           <div>
