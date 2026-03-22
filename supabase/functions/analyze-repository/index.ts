@@ -11,37 +11,56 @@ serve(async (req) => {
   }
 
   try {
-    const { repoUrl, githubToken } = await req.json();
+    const { repoUrl, githubToken, token, provider = 'github' } = await req.json();
+    const authToken = token || githubToken; // backward compat
 
-    console.log('Analyzing repository:', repoUrl);
+    console.log('Analyzing repository:', repoUrl, 'provider:', provider);
 
-    // Extract owner/repo from GitHub URL
-    const urlMatch = repoUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-    if (!urlMatch) {
-      throw new Error('Invalid GitHub URL format');
-    }
+    let response: Response;
 
-    const [, owner, repo] = urlMatch;
-    const cleanRepo = repo.replace(/\.git$/, ''); // Remove .git suffix if present
-
-    console.log(`Fetching package.json for ${owner}/${cleanRepo}`);
-
-    // Fetch package.json from GitHub API
-    const response = await fetch(
-      `https://api.github.com/repos/${owner}/${cleanRepo}/contents/package.json`,
-      {
-        headers: {
-          'Authorization': `token ${githubToken}`,
-          'Accept': 'application/vnd.github.v3+json',
-        },
+    if (provider === 'gitlab') {
+      // Extract GitLab project path from URL
+      const glMatch = repoUrl.match(/gitlab\.com\/(.+?)(?:\.git)?$/);
+      if (!glMatch) {
+        throw new Error('Invalid GitLab URL format');
       }
-    );
+      const projectPath = encodeURIComponent(glMatch[1]);
+      console.log(`Fetching package.json from GitLab project: ${glMatch[1]}`);
+
+      response = await fetch(
+        `https://gitlab.com/api/v4/projects/${projectPath}/repository/files/package.json?ref=HEAD`,
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        }
+      );
+    } else {
+      // GitHub
+      const urlMatch = repoUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+      if (!urlMatch) {
+        throw new Error('Invalid GitHub URL format');
+      }
+
+      const [, owner, repo] = urlMatch;
+      const cleanRepo = repo.replace(/\.git$/, '');
+      console.log(`Fetching package.json for ${owner}/${cleanRepo}`);
+
+      response = await fetch(
+        `https://api.github.com/repos/${owner}/${cleanRepo}/contents/package.json`,
+        {
+          headers: {
+            Authorization: `token ${authToken}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        }
+      );
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`GitHub API error (${response.status}):`, errorText);
+      console.error(`${provider} API error (${response.status}):`, errorText);
 
-      // If package.json not found, return null analysis
       if (response.status === 404) {
         return new Response(
           JSON.stringify({
@@ -64,7 +83,7 @@ serve(async (req) => {
 
     const data = await response.json();
 
-    // Decode base64 content
+    // Both GitHub and GitLab return base64 content in data.content
     const content = atob(data.content.replace(/\n/g, ''));
     const packageJson = JSON.parse(content);
 

@@ -6,9 +6,12 @@ import { Copy, Download, Code, Sparkles, Shield, ExternalLink, GitBranch, Loader
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
 
+import { GitProvider } from '@/services/repoApi';
+
 interface CodePreviewPanelProps {
   artifacts: GeneratedArtifacts;
-  onPushToGithub?: (sstConfig: string) => Promise<void>;
+  onPushToRepo?: (sstConfig: string) => Promise<void>;
+  provider?: GitProvider;
 }
 
 const STATIC_IAM_POLICY = JSON.stringify({
@@ -46,7 +49,7 @@ const STATIC_IAM_POLICY = JSON.stringify({
   ]
 }, null, 2);
 
-const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) => {
+const CodePreviewPanel = ({ artifacts, onPushToRepo, provider = 'github' }: CodePreviewPanelProps) => {
   const { toast } = useToast();
   const [isPushing, setIsPushing] = useState(false);
 
@@ -137,7 +140,7 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
                     <Download className="h-3 w-3 mr-1" />
                     Download
                   </Button>
-                  {onPushToGithub && (
+                  {onPushToRepo && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -146,8 +149,9 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
                       onClick={async () => {
                         setIsPushing(true);
                         try {
-                          await onPushToGithub(artifacts.sstConfig);
-                          toast({ title: 'Pushed to GitHub', description: 'sst.config.ts committed to your repo' });
+                          await onPushToRepo(artifacts.sstConfig);
+                          const providerName = provider === 'gitlab' ? 'GitLab' : 'GitHub';
+                          toast({ title: `Pushed to ${providerName}`, description: 'sst.config.ts committed to your repo' });
                         } catch (e) {
                           toast({ title: 'Push failed', description: (e as Error).message, variant: 'destructive' });
                         } finally {
@@ -156,7 +160,7 @@ const CodePreviewPanel = ({ artifacts, onPushToGithub }: CodePreviewPanelProps) 
                       }}
                     >
                       {isPushing ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <GitBranch className="h-3 w-3 mr-1" />}
-                      Push to GitHub
+                      Push to {provider === 'gitlab' ? 'GitLab' : 'GitHub'}
                     </Button>
                   )}
                 </div>

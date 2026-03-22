@@ -13,7 +13,18 @@ interface Project {
   branch_name: string | null;
   is_deployed: boolean | null;
   deployed_url: string | null;
+  git_provider?: string | null;
 }
+
+const GitLabIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z"/>
+  </svg>
+);
+
+const RepoIcon = ({ provider, className }: { provider?: string | null; className?: string }) => (
+  provider === 'gitlab' ? <GitLabIcon className={className} /> : <Github className={className} />
+);
 
 interface RepoSelectionProps {
   projects: Project[];
@@ -35,12 +46,12 @@ const RepoSelection = ({ projects, selectedRepo, onSelectRepo, onAddNew }: RepoS
     <div>
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Select Repository</h2>
-        <p className="text-gray-600">Choose a GitHub repository for deployment or add a new one</p>
+        <p className="text-gray-600">Choose a repository for deployment or add a new one</p>
       </div>
 
       {projects.length === 0 ? (
         <div className="text-center py-12">
-          <Github className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <RepoIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No repositories found</h3>
           <p className="text-gray-600 mb-6">You need to add a repository first to proceed with deployment</p>
           <Button onClick={onAddNew} className="bg-blue-600 hover:bg-blue-700">
@@ -64,7 +75,7 @@ const RepoSelection = ({ projects, selectedRepo, onSelectRepo, onAddNew }: RepoS
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Github className="h-5 w-5 text-gray-600" />
+                      <RepoIcon provider={project.git_provider} className="h-5 w-5 text-gray-600" />
                       <CardTitle className="text-lg">{getRepoName(project)}</CardTitle>
                     </div>
                     {selectedRepo?.id === project.id && (
@@ -103,7 +114,7 @@ const RepoSelection = ({ projects, selectedRepo, onSelectRepo, onAddNew }: RepoS
               <Plus className="h-12 w-12 text-gray-400 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Add New Repository</h3>
               <p className="text-gray-600 text-center">
-                Connect a new GitHub repository to deploy
+                Connect a new repository to deploy
               </p>
             </CardContent>
           </Card>

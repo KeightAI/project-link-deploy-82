@@ -14,7 +14,14 @@ interface Project {
   is_deployed: boolean | null;
   deployed_url: string | null;
   created_at: string;
+  git_provider?: string | null;
 }
+
+const GitLabIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z"/>
+  </svg>
+);
 
 interface ProjectCardProps {
   project: Project;
@@ -90,7 +97,7 @@ const ProjectCard = ({ project, onEdit, onDelete, onDeploy, deploymentStatus }: 
       <CardHeader className="pb-4">
         <div className="flex justify-between items-start mb-2">
           <div className="flex items-center gap-2">
-            <Github className="h-5 w-5 text-gray-600" />
+            {project.git_provider === 'gitlab' ? <GitLabIcon className="h-5 w-5 text-gray-600" /> : <Github className="h-5 w-5 text-gray-600" />}
             <CardTitle className="text-xl">{getRepoName()}</CardTitle>
             {isPrivateRepo() ? (
               <Badge variant="secondary" className="bg-red-100 text-red-800 flex items-center gap-1 text-xs">

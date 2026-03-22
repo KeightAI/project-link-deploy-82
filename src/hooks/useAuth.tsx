@@ -3,11 +3,14 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
+export type GitProvider = 'github' | 'gitlab' | null;
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  provider: GitProvider;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -44,22 +47,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Check if GitHub token is still valid when session exists
+      // Check if provider token is still valid when session exists
       if (session?.provider_token && event === 'TOKEN_REFRESHED') {
         try {
-          const response = await fetch('https://api.github.com/user', {
-            headers: {
-              'Authorization': `token ${session.provider_token}`,
-              'Accept': 'application/vnd.github.v3+json',
-            },
-          });
+          const currentProvider = session.user?.app_metadata?.provider;
+          let validateUrl = 'https://api.github.com/user';
+          let authHeader: Record<string, string> = {
+            Authorization: `token ${session.provider_token}`,
+            Accept: 'application/vnd.github.v3+json',
+          };
+
+          if (currentProvider === 'gitlab') {
+            validateUrl = 'https://gitlab.com/api/v4/user';
+            authHeader = { Authorization: `Bearer ${session.provider_token}` };
+          }
+
+          const response = await fetch(validateUrl, { headers: authHeader });
 
           if (response.status === 401) {
-            console.log('GitHub token invalid after refresh, signing out');
+            console.log('Provider token invalid after refresh, signing out');
             await supabase.auth.signOut();
           }
         } catch (error) {
-          console.error('Error validating GitHub token:', error);
+          console.error('Error validating provider token:', error);
         }
       }
     });
@@ -73,8 +83,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   };
 
+  const provider: GitProvider = (session?.user?.app_metadata?.provider as GitProvider) || null;
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signOut, provider }}>
       {children}
     </AuthContext.Provider>
   );

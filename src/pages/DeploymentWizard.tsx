@@ -20,6 +20,7 @@ interface Project {
   branch_name: string | null;
   is_deployed: boolean | null;
   deployed_url: string | null;
+  git_provider?: string | null;
 }
 
 interface WizardData {
@@ -77,6 +78,7 @@ const DeploymentWizard = () => {
     github_repo_id: string;
     branch_name: string;
     is_deployed: boolean;
+    git_provider: string;
   }) => {
     try {
       const { error } = await supabase
@@ -164,7 +166,7 @@ const DeploymentWizard = () => {
   };
 
   const steps = [
-    { number: 1, title: "Select Repository", description: "Choose your GitHub repository" },
+    { number: 1, title: "Select Repository", description: "Choose your repository" },
     { number: 2, title: "Design Infrastructure", description: "Chat with AI to configure deployment" }
   ];
 

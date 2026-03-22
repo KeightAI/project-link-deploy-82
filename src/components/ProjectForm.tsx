@@ -13,8 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { fetchUserRepositories, GitHubRepo } from '@/services/githubApi';
+import { fetchRepos, NormalizedRepo } from '@/services/repoApi';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { Github, Lock, Unlock, AlertTriangle } from 'lucide-react';
 
 interface Project {
@@ -38,6 +39,7 @@ interface ProjectFormProps {
     github_repo_id: string;
     branch_name: string;
     is_deployed: boolean;
+    git_provider: string;
   }) => void;
   project?: Project | null;
 }
@@ -47,12 +49,13 @@ const NAME_MAX = 20;
 const ProjectForm = ({ isOpen, onClose, onSubmit, project }: ProjectFormProps) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
+  const [selectedRepo, setSelectedRepo] = useState<NormalizedRepo | null>(null);
   const [branchName, setBranchName] = useState('main');
   const [isDeployed, setIsDeployed] = useState(false);
-  const [repositories, setRepositories] = useState<GitHubRepo[]>([]);
+  const [repositories, setRepositories] = useState<NormalizedRepo[]>([]);
   const [loadingRepos, setLoadingRepos] = useState(false);
   const { toast } = useToast();
+  const { provider } = useAuth();
 
   useEffect(() => {
     if (project) {
@@ -82,7 +85,7 @@ const ProjectForm = ({ isOpen, onClose, onSubmit, project }: ProjectFormProps) =
   const loadRepositories = async () => {
     setLoadingRepos(true);
     try {
-      const repos = await fetchUserRepositories();
+      const repos = await fetchRepos(provider || 'github');
       setRepositories(repos);
     } catch (error: any) {
       toast({
@@ -101,7 +104,7 @@ const ProjectForm = ({ isOpen, onClose, onSubmit, project }: ProjectFormProps) =
       setSelectedRepo(repo);
       setName(repo.name);
       setDescription(repo.description || '');
-      setBranchName(repo.default_branch);
+      setBranchName(repo.defaultBranch);
     }
   };
 
@@ -129,10 +132,11 @@ const ProjectForm = ({ isOpen, onClose, onSubmit, project }: ProjectFormProps) =
     onSubmit({
       name,
       description,
-      github_repo_url: selectedRepo?.html_url || project?.github_repo_url || '',
+      github_repo_url: selectedRepo?.webUrl || project?.github_repo_url || '',
       github_repo_id: selectedRepo?.id.toString() || project?.github_repo_id || '',
       branch_name: branchName,
       is_deployed: isDeployed,
+      git_provider: selectedRepo?.provider || provider || 'github',
     });
   };
 
@@ -142,13 +146,13 @@ const ProjectForm = ({ isOpen, onClose, onSubmit, project }: ProjectFormProps) =
         <DialogHeader>
           <DialogTitle>{project ? 'Edit Project' : 'Create New Deployment'}</DialogTitle>
           <DialogDescription>
-            {project ? 'Update your project details.' : 'Select a GitHub repository to deploy.'}
+            {project ? 'Update your project details.' : 'Select a repository to deploy.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {!project && (
             <div>
-              <Label htmlFor="repository">GitHub Repository</Label>
+              <Label htmlFor="repository">Repository</Label>
               <Select onValueChange={handleRepoSelect} disabled={loadingRepos}>
                 <SelectTrigger>
                   <SelectValue placeholder={loadingRepos ? "Loading repositories..." : "Select a repository"} />
@@ -157,9 +161,15 @@ const ProjectForm = ({ isOpen, onClose, onSubmit, project }: ProjectFormProps) =
                   {repositories.map((repo) => (
                     <SelectItem key={repo.id} value={repo.id.toString()}>
                       <div className="flex items-center gap-2">
-                        <Github className="h-4 w-4" />
+                        {repo.provider === 'gitlab' ? (
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z"/>
+                          </svg>
+                        ) : (
+                          <Github className="h-4 w-4" />
+                        )}
                         <span>{repo.name}</span>
-                        {repo.private ? (
+                        {repo.isPrivate ? (
                           <Lock className="h-3 w-3 text-gray-500" />
                         ) : (
                           <Unlock className="h-3 w-3 text-gray-500" />

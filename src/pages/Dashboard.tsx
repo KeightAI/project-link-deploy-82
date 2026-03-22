@@ -18,6 +18,7 @@ interface Project {
   is_deployed: boolean | null;
   deployed_url: string | null;
   created_at: string;
+  git_provider?: string | null;
 }
 
 interface Deployment {
@@ -106,6 +107,7 @@ const Dashboard = () => {
     github_repo_id: string;
     branch_name: string;
     is_deployed: boolean;
+    git_provider: string;
   }) => {
     try {
       const { error } = await supabase
@@ -137,6 +139,7 @@ const Dashboard = () => {
     github_repo_id: string;
     branch_name: string;
     is_deployed: boolean;
+    git_provider: string;
   }) => {
     if (!editingProject) return;
 
@@ -271,7 +274,7 @@ const Dashboard = () => {
               No deployments yet
             </h2>
             <p className="text-gray-500 mb-6">
-              Connect your first GitHub repository to get started
+              Connect your first repository to get started
             </p>
             <Button onClick={() => setIsFormOpen(true)} className="bg-orange-600 hover:bg-orange-700">
               <Plus className="h-4 w-4 mr-2" />

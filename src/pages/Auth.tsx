@@ -45,6 +45,17 @@ const Auth = () => {
     if (error) console.error('Error logging in:', error.message)
   }
 
+  const signInWithGitLab = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'gitlab',
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`,
+        scopes: 'api read_user'
+      }
+    })
+    if (error) console.error('Error logging in with GitLab:', error.message)
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
@@ -117,15 +128,26 @@ const Auth = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button 
+          <Button
             onClick={signInWithGitHub}
             variant="outline"
-            className="w-full mb-4 flex items-center gap-2 bg-gray-900 text-white hover:bg-gray-800 border-gray-900"
+            className="w-full mb-2 flex items-center gap-2 bg-gray-900 text-white hover:bg-gray-800 border-gray-900"
           >
             <Github className="h-4 w-4" />
             Continue with GitHub
           </Button>
-          
+
+          <Button
+            onClick={signInWithGitLab}
+            variant="outline"
+            className="w-full mb-4 flex items-center gap-2 bg-[#FC6D26] text-white hover:bg-[#E24329] border-[#FC6D26]"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z"/>
+            </svg>
+            Continue with GitLab
+          </Button>
+
           <div className="relative mb-4">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t" />

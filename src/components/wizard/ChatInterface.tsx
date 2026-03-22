@@ -20,13 +20,16 @@ import {
   createAssistantMessage,
   createSystemMessage,
 } from '@/types/chat';
-import { writeFileToRepo } from '@/services/githubApi';
+import { writeFile } from '@/services/repoApi';
+import { GitProvider } from '@/services/repoApi';
 
 interface Project {
   id: string;
   name: string;
   github_repo_url: string | null;
+  github_repo_id: string | null;
   branch_name: string | null;
+  git_provider: string | null;
 }
 
 interface ChatInterfaceProps {
@@ -86,7 +89,8 @@ const ChatInterface = ({
         const { data, error } = await supabase.functions.invoke('analyze-repository', {
           body: {
             repoUrl: selectedRepo.github_repo_url,
-            githubToken: session.provider_token,
+            token: session.provider_token,
+            provider: selectedRepo.git_provider || 'github',
           },
         });
 
@@ -218,13 +222,18 @@ const ChatInterface = ({
     }
   };
 
-  const handlePushToGithub = async (sstConfig: string) => {
+  const handlePushToRepo = async (sstConfig: string) => {
     const { data: { session: freshSession } } = await supabase.auth.getSession();
     if (!freshSession?.provider_token) {
-      throw new Error('No GitHub token found. Please sign in with GitHub again.');
+      throw new Error('No access token found. Please sign in again.');
     }
-    await writeFileToRepo(
-      selectedRepo.github_repo_url || '',
+    const repoProvider = (selectedRepo.git_provider || 'github') as GitProvider;
+    const identifier = repoProvider === 'github'
+      ? (selectedRepo.github_repo_url || '')
+      : (selectedRepo.github_repo_id || '');
+    await writeFile(
+      repoProvider,
+      identifier,
       sstConfig,
       freshSession.provider_token,
       selectedRepo.branch_name || 'main'
@@ -328,7 +337,7 @@ const ChatInterface = ({
         <>
           <ResizableHandle withHandle />
           <ResizablePanel defaultSize={45} minSize={30}>
-            <CodePreviewPanel artifacts={conversation.latestArtifacts} onPushToGithub={handlePushToGithub} />
+            <CodePreviewPanel artifacts={conversation.latestArtifacts} onPushToRepo={handlePushToRepo} provider={(selectedRepo.git_provider || 'github') as GitProvider} />
           </ResizablePanel>
         </>
       )}
