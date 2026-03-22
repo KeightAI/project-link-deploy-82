@@ -14,7 +14,6 @@ interface Project {
   branch_name: string | null;
   is_deployed: boolean | null;
   deployed_url: string | null;
-  git_provider?: string | null;
 }
 
 const GitLabIcon = ({ className }: { className?: string }) => (
