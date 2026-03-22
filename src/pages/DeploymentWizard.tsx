@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,6 +23,11 @@ interface Project {
   git_provider?: string | null;
 }
 
+interface Deployment {
+  repo_url: string;
+  status: string;
+}
+
 interface WizardData {
   selectedRepo?: Project;
   conversation?: ConversationState;
@@ -33,21 +38,54 @@ const DeploymentWizard = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [wizardData, setWizardData] = useState<WizardData>({});
   const [projects, setProjects] = useState<Project[]>([]);
+  const [deploymentStatuses, setDeploymentStatuses] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-    } else if (user) {
-      fetchProjects();
-    }
-  }, [user, authLoading, navigate]);
+  const fetchDeploymentStatuses = useCallback(async (projectList: Project[]) => {
+    try {
+      const repoUrls = projectList
+        .filter((project) => project.github_repo_url)
+        .map((project) => project.github_repo_url as string);
 
-  const fetchProjects = async () => {
+      if (repoUrls.length === 0) {
+        setDeploymentStatuses({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('deployments')
+        .select('repo_url, status, created_at')
+        .in('repo_url', repoUrls)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const statusMap: Record<string, string> = {};
+      data?.forEach((deployment: Deployment) => {
+        if (!statusMap[deployment.repo_url]) {
+          statusMap[deployment.repo_url] = deployment.status;
+        }
+      });
+
+      setDeploymentStatuses(statusMap);
+    } catch (error) {
+      console.error('Failed to fetch deployment statuses:', error);
+    }
+  }, []);
+
+  const fetchProjects = useCallback(async (
+    options: { showLoading?: boolean; silent?: boolean } = {}
+  ) => {
+    const { showLoading = false, silent = false } = options;
+
+    if (showLoading) {
+      setLoading(true);
+    }
+
     try {
       const { data, error } = await supabase
         .from('projects')
@@ -55,17 +93,56 @@ const DeploymentWizard = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setProjects(data || []);
+
+      const latestProjects = data || [];
+      setProjects(latestProjects);
+      await fetchDeploymentStatuses(latestProjects);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "Failed to fetch projects",
-        variant: "destructive",
-      });
+      if (!silent) {
+        toast({
+          title: "Error",
+          description: "Failed to fetch projects",
+          variant: "destructive",
+        });
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
-  };
+  }, [fetchDeploymentStatuses, toast]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/auth');
+    } else if (user) {
+      fetchProjects({ showLoading: true });
+    }
+  }, [authLoading, fetchProjects, navigate, user]);
+
+  useEffect(() => {
+    if (!user || currentStep !== 1) return;
+
+    const refreshProjects = () => {
+      void fetchProjects({ silent: true });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshProjects();
+      }
+    };
+
+    const pollInterval = window.setInterval(refreshProjects, 10000);
+    window.addEventListener('focus', refreshProjects);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(pollInterval);
+      window.removeEventListener('focus', refreshProjects);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [currentStep, fetchProjects, user]);
 
   const updateWizardData = (data: Partial<WizardData>) => {
     setWizardData(prev => ({ ...prev, ...data }));
@@ -93,7 +170,7 @@ const DeploymentWizard = () => {
       });
 
       setIsFormOpen(false);
-      fetchProjects();
+      fetchProjects({ silent: true });
     } catch (error: any) {
       toast({
         title: "Error",
@@ -237,6 +314,7 @@ const DeploymentWizard = () => {
             <CardContent className="p-8">
               <RepoSelection
                 projects={projects}
+                deploymentStatuses={deploymentStatuses}
                 selectedRepo={wizardData.selectedRepo}
                 onSelectRepo={(repo) => updateWizardData({ selectedRepo: repo })}
                 onAddNew={() => setIsFormOpen(true)}

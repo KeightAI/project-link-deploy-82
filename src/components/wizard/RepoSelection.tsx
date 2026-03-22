@@ -28,18 +28,55 @@ const RepoIcon = ({ provider, className }: { provider?: string | null; className
 
 interface RepoSelectionProps {
   projects: Project[];
+  deploymentStatuses?: Record<string, string>;
   selectedRepo?: Project;
   onSelectRepo: (repo: Project) => void;
   onAddNew: () => void;
 }
 
-const RepoSelection = ({ projects, selectedRepo, onSelectRepo, onAddNew }: RepoSelectionProps) => {
+const RepoSelection = ({ projects, deploymentStatuses = {}, selectedRepo, onSelectRepo, onAddNew }: RepoSelectionProps) => {
   const getRepoName = (project: Project) => {
     if (project.github_repo_url) {
       const parts = project.github_repo_url.split('/');
       return parts[parts.length - 1];
     }
     return project.name;
+  };
+
+  const getDeploymentBadge = (project: Project) => {
+    const latestStatus = project.github_repo_url
+      ? deploymentStatuses[project.github_repo_url]
+      : undefined;
+
+    if (latestStatus && ['cloning', 'installing', 'preparing', 'deploying'].includes(latestStatus)) {
+      return (
+        <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
+          Deploying...
+        </Badge>
+      );
+    }
+
+    if (latestStatus === 'failed') {
+      return (
+        <Badge variant="secondary" className="bg-red-100 text-red-800 text-xs">
+          Deployment failed
+        </Badge>
+      );
+    }
+
+    if (latestStatus === 'completed' || project.is_deployed || project.deployed_url) {
+      return (
+        <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
+          Already deployed
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+        Ready for deployment
+      </Badge>
+    );
   };
 
   return (
@@ -93,15 +130,7 @@ const RepoSelection = ({ projects, selectedRepo, onSelectRepo, onAddNew }: RepoS
                         Branch: {project.branch_name}
                       </Badge>
                     )}
-                    {project.is_deployed || project.deployed_url ? (
-                      <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
-                        Already deployed
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
-                        Ready for deployment
-                      </Badge>
-                    )}
+                    {getDeploymentBadge(project)}
                   </div>
                 </CardContent>
               </Card>

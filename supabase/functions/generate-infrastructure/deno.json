@@ -7,7 +7,6 @@
     "serve": "deno run --allow-net --allow-env index.ts"
   },
   "compilerOptions": {
-    "allowJs": true,
     "strict": true,
     "lib": ["deno.window"]
   }
