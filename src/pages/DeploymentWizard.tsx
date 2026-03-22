@@ -15,6 +15,7 @@ interface Project {
   id: string;
   name: string;
   description: string | null;
+  git_provider: string | null;
   github_repo_url: string | null;
   github_repo_id: string | null;
   branch_name: string | null;
