@@ -50,7 +50,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Check if provider token is still valid when session exists
       if (session?.provider_token && event === 'TOKEN_REFRESHED') {
         try {
-          const currentProvider = session.user?.app_metadata?.provider;
+          const identities = session.user?.identities || [];
+          const latestIdentity = [...identities].sort((a, b) =>
+            new Date(b.last_sign_in_at || 0).getTime() - new Date(a.last_sign_in_at || 0).getTime()
+          )[0];
+          const currentProvider = latestIdentity?.provider;
           let validateUrl = 'https://api.github.com/user';
           let authHeader: Record<string, string> = {
             Authorization: `token ${session.provider_token}`,
@@ -83,7 +87,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   };
 
-  const provider: GitProvider = (session?.user?.app_metadata?.provider as GitProvider) || null;
+  const identities = session?.user?.identities || [];
+  const latestIdentity = [...identities].sort((a, b) =>
+    new Date(b.last_sign_in_at || 0).getTime() - new Date(a.last_sign_in_at || 0).getTime()
+  )[0];
+  const provider: GitProvider = (latestIdentity?.provider as GitProvider) || null;
 
   return (
     <AuthContext.Provider value={{ user, session, loading, signOut, provider }}>
