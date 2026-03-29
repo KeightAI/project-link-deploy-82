@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -44,6 +44,7 @@ const DeploymentWizard = () => {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const hasInitialLoad = useRef(false);
 
   const fetchDeploymentStatuses = useCallback(async (projectList: Project[]) => {
     try {
@@ -115,7 +116,8 @@ const DeploymentWizard = () => {
   useEffect(() => {
     if (!authLoading && !user) {
       navigate('/auth');
-    } else if (user) {
+    } else if (user && !hasInitialLoad.current) {
+      hasInitialLoad.current = true;
       fetchProjects({ showLoading: true });
     }
   }, [authLoading, fetchProjects, navigate, user]);
@@ -326,6 +328,7 @@ const DeploymentWizard = () => {
             {wizardData.selectedRepo && (
               <ChatInterface
                 selectedRepo={wizardData.selectedRepo}
+                initialConversation={wizardData.conversation}
                 onConversationUpdate={(conversation) =>
                   updateWizardData({ conversation })
                 }

@@ -34,26 +34,30 @@ interface Project {
 
 interface ChatInterfaceProps {
   selectedRepo: Project;
+  initialConversation?: ConversationState;
   onConversationUpdate: (conversation: ConversationState) => void;
   onCodeGenerated: (hasCode: boolean) => void;
 }
 
 const ChatInterface = ({
   selectedRepo,
+  initialConversation,
   onConversationUpdate,
   onCodeGenerated,
 }: ChatInterfaceProps) => {
   const [conversation, setConversation] = useState<ConversationState>(
-    createEmptyConversation(selectedRepo.id)
+    initialConversation || createEmptyConversation(selectedRepo.id)
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showCodePanel, setShowCodePanel] = useState(false);
+  const [showCodePanel, setShowCodePanel] = useState(
+    !!(initialConversation?.latestArtifacts?.sstConfig)
+  );
   const [showInfoBanner, setShowInfoBanner] = useState(true);
   const { toast } = useToast();
   const { session } = useAuth();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const hasAnalyzed = useRef(false);
+  const hasAnalyzed = useRef(!!(initialConversation?.repoAnalysis));
 
   // Initialize with welcome message
   useEffect(() => {
