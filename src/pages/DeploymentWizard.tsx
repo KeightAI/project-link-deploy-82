@@ -347,7 +347,7 @@ const DeploymentWizard = () => {
             onClick={handleBack}
             disabled={currentStep === 1}
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="h-5 w-5 mr-2" />
             Back
           </Button>
           
@@ -363,7 +363,7 @@ const DeploymentWizard = () => {
               disabled={!canProceed()}
               className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-6 text-lg"
             >
-              <CheckCircle className="h-4 w-4 mr-2" />
+              <CheckCircle className="h-5 w-5 mr-2" />
               Save Configuration
             </Button>
           ) : (
@@ -373,7 +373,7 @@ const DeploymentWizard = () => {
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-8 py-6 text-lg"
             >
               Next
-              <ArrowRight className="h-4 w-4 ml-2" />
+              <ArrowRight className="h-5 w-5 ml-2" />
             </Button>
           )}
         </div>
