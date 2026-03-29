@@ -150,7 +150,7 @@ YOUR TASK:
 3. Maintain consistency with previous decisions
 4. Use SST v3 syntax (sst.aws.* constructs, $config format)
 
-RESPONSE FORMAT (MANDATORY) - you MUST return exactly these keys:
+RESPONSE FORMAT (MANDATORY) - respond with valid JSON containing exactly these keys:
 {
   "message": "Brief conversational response (2-3 sentences)",
   "sstConfig": "Complete SST v3 TypeScript configuration with proper formatting",
