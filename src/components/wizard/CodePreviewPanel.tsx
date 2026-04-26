@@ -152,7 +152,7 @@ const CodePreviewPanel = ({ artifacts, onPushToRepo, provider = 'github' }: Code
                           await onPushToRepo(artifacts.sstConfig, artifacts.requiredPackages);
                           const providerName = provider === 'gitlab' ? 'GitLab' : 'GitHub';
                           const pkgUpdated = artifacts.requiredPackages?.dependencies?.length || artifacts.requiredPackages?.devDependencies?.length;
-                          toast({ title: `Pushed to ${providerName}`, description: pkgUpdated ? 'sst.config.ts and package.json committed to your repo' : 'sst.config.ts committed to your repo' });
+                          toast({ title: `Changes pushed to ${providerName}`, description: pkgUpdated ? 'sst.config.ts and package.json updated in your repo' : 'sst.config.ts added to your repo' });
                         } catch (e) {
                           toast({ title: 'Push failed', description: (e as Error).message, variant: 'destructive' });
                         } finally {

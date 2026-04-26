@@ -92,13 +92,13 @@ export const writeFileToRepo = async (
   repoUrl: string,
   content: string,
   token: string,
-  branch: string = 'main'
+  branch: string = 'main',
+  filePath: string = 'sst.config.ts'
 ): Promise<void> => {
   const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
   if (!match) throw new Error('Invalid GitHub repo URL');
   const [, owner, repo] = match;
   const repoName = repo.replace(/\.git$/, '');
-  const filePath = 'sst.config.ts';
   const apiBase = `https://api.github.com/repos/${owner}/${repoName}/contents/${filePath}`;
   const headers = {
     Authorization: `token ${token}`,
@@ -118,7 +118,7 @@ export const writeFileToRepo = async (
     method: 'PUT',
     headers,
     body: JSON.stringify({
-      message: sha ? 'chore: update sst.config.ts via Keight' : 'chore: add sst.config.ts via Keight',
+      message: sha ? `chore: update ${filePath} via Keight` : `chore: add ${filePath} via Keight`,
       content: btoa(String.fromCharCode(...Array.from(new TextEncoder().encode(content)))),
       branch,
       ...(sha ? { sha } : {}),

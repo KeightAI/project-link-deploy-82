@@ -256,7 +256,7 @@ const ChatInterface = ({
         requiredPackages?.devDependencies?.forEach((dep) => {
           if (!pkg.devDependencies[dep]) pkg.devDependencies[dep] = '*';
         });
-        await writeFile(repoProvider, identifier, JSON.stringify(pkg, null, 2), token, branch);
+        await writeFile(repoProvider, identifier, JSON.stringify(pkg, null, 2), token, branch, 'package.json');
       }
     }
 

@@ -61,10 +61,11 @@ export const writeFile = async (
   repoIdentifier: string,
   content: string,
   token: string,
-  branch: string
+  branch: string,
+  filePath: string = 'sst.config.ts'
 ): Promise<void> => {
   if (provider === 'github') {
-    return writeGitHub(repoIdentifier, content, token, branch);
+    return writeGitHub(repoIdentifier, content, token, branch, filePath);
   }
-  return writeGitLab(repoIdentifier, content, token, branch);
+  return writeGitLab(repoIdentifier, content, token, branch, filePath);
 };

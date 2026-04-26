@@ -83,10 +83,10 @@ export const writeFileToRepo = async (
   projectId: string,
   content: string,
   token: string,
-  branch: string = 'main'
+  branch: string = 'main',
+  filePath: string = 'sst.config.ts'
 ): Promise<void> => {
-  const filePath = encodeURIComponent('sst.config.ts');
-  const apiBase = `https://gitlab.com/api/v4/projects/${projectId}/repository/files/${filePath}`;
+  const apiBase = `https://gitlab.com/api/v4/projects/${projectId}/repository/files/${encodeURIComponent(filePath)}`;
   const headers = {
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
@@ -100,8 +100,8 @@ export const writeFileToRepo = async (
     branch,
     content,
     commit_message: fileExists
-      ? 'chore: update sst.config.ts via Keight'
-      : 'chore: add sst.config.ts via Keight',
+      ? `chore: update ${filePath} via Keight`
+      : `chore: add ${filePath} via Keight`,
     encoding: 'text',
   });
 
