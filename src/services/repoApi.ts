@@ -1,5 +1,5 @@
-import { fetchUserRepositories as fetchGitHubRepos, GitHubRepo, writeFileToRepo as writeGitHub } from './githubApi';
-import { fetchUserRepositories as fetchGitLabRepos, GitLabProject, writeFileToRepo as writeGitLab } from './gitlabApi';
+import { fetchUserRepositories as fetchGitHubRepos, GitHubRepo, writeFileToRepo as writeGitHub, readFileFromRepo as readGitHub } from './githubApi';
+import { fetchUserRepositories as fetchGitLabRepos, GitLabProject, writeFileToRepo as writeGitLab, readFileFromRepo as readGitLab } from './gitlabApi';
 
 export type GitProvider = 'github' | 'gitlab';
 
@@ -43,6 +43,17 @@ export const fetchRepos = async (provider: GitProvider): Promise<NormalizedRepo[
     cloneUrl: r.http_url_to_repo,
     provider: 'gitlab' as const,
   }));
+};
+
+export const readFile = async (
+  provider: GitProvider,
+  repoIdentifier: string,
+  filePath: string,
+  token: string,
+  branch: string
+): Promise<string | null> => {
+  if (provider === 'github') return readGitHub(repoIdentifier, filePath, token, branch);
+  return readGitLab(repoIdentifier, filePath, token, branch);
 };
 
 export const writeFile = async (

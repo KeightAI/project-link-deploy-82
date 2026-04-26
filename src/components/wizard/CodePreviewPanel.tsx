@@ -1,4 +1,4 @@
-import { GeneratedArtifacts } from '@/types/chat';
+import { GeneratedArtifacts, RequiredPackages } from '@/types/chat';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,7 +10,7 @@ import { GitProvider } from '@/services/repoApi';
 
 interface CodePreviewPanelProps {
   artifacts: GeneratedArtifacts;
-  onPushToRepo?: (sstConfig: string) => Promise<void>;
+  onPushToRepo?: (sstConfig: string, requiredPackages?: RequiredPackages) => Promise<void>;
   provider?: GitProvider;
 }
 
@@ -149,9 +149,10 @@ const CodePreviewPanel = ({ artifacts, onPushToRepo, provider = 'github' }: Code
                       onClick={async () => {
                         setIsPushing(true);
                         try {
-                          await onPushToRepo(artifacts.sstConfig);
+                          await onPushToRepo(artifacts.sstConfig, artifacts.requiredPackages);
                           const providerName = provider === 'gitlab' ? 'GitLab' : 'GitHub';
-                          toast({ title: `Pushed to ${providerName}`, description: 'sst.config.ts committed to your repo' });
+                          const pkgUpdated = artifacts.requiredPackages?.dependencies?.length || artifacts.requiredPackages?.devDependencies?.length;
+                          toast({ title: `Pushed to ${providerName}`, description: pkgUpdated ? 'sst.config.ts and package.json committed to your repo' : 'sst.config.ts committed to your repo' });
                         } catch (e) {
                           toast({ title: 'Push failed', description: (e as Error).message, variant: 'destructive' });
                         } finally {

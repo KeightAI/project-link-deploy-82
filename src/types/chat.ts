@@ -1,9 +1,15 @@
 export type MessageRole = 'user' | 'assistant' | 'system';
 
+export interface RequiredPackages {
+  dependencies: string[];
+  devDependencies: string[];
+}
+
 export interface GeneratedArtifacts {
   sstConfig: string;
   suggestedChanges: string;
   iamPolicy?: string;
+  requiredPackages?: RequiredPackages;
 }
 
 export interface ChatMessage {

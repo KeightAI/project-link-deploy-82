@@ -65,6 +65,20 @@ export const fetchUserRepositories = async (): Promise<GitLabProject[]> => {
   }
 };
 
+export const readFileFromRepo = async (
+  projectId: string,
+  filePath: string,
+  token: string,
+  branch: string = 'main'
+): Promise<string | null> => {
+  const encodedPath = encodeURIComponent(filePath);
+  const apiBase = `https://gitlab.com/api/v4/projects/${projectId}/repository/files/${encodedPath}?ref=${branch}`;
+  const res = await fetch(apiBase, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return atob(data.content.replace(/\n/g, ''));
+};
+
 export const writeFileToRepo = async (
   projectId: string,
   content: string,

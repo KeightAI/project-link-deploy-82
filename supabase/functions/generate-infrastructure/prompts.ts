@@ -153,12 +153,17 @@ CORRECT SST v3 CONSTRUCTS (see https://sst.dev/docs/component/aws/):
 
 For component-specific options and properties, reference the official docs above.
 
-RESPONSE FORMAT (MANDATORY):
+RESPONSE FORMAT (MANDATORY) - respond with valid JSON containing exactly these keys:
 {
   "message": "Brief conversational response (2-3 sentences)",
   "sstConfig": "Complete SST v3 TypeScript configuration with proper formatting",
-  "suggestedChanges": "Markdown implementation guide with steps"
-}`;
+  "suggestedChanges": "Markdown implementation guide with steps",
+  "requiredPackages": {
+    "dependencies": ["list of npm runtime packages needed, e.g. @aws-sdk/client-s3"],
+    "devDependencies": ["list of npm dev packages needed, e.g. sst"]
+  }
+}
+If no additional packages are needed, use empty arrays for both fields.`;
   }
 
   return `You are continuing a conversation about AWS infrastructure configuration using SST v3.
@@ -176,6 +181,11 @@ RESPONSE FORMAT (MANDATORY) - respond with valid JSON containing exactly these k
 {
   "message": "Brief conversational response (2-3 sentences)",
   "sstConfig": "Complete SST v3 TypeScript configuration with proper formatting",
-  "suggestedChanges": "Markdown implementation guide with steps"
-}`;
+  "suggestedChanges": "Markdown implementation guide with steps",
+  "requiredPackages": {
+    "dependencies": ["list of npm runtime packages needed"],
+    "devDependencies": ["list of npm dev packages needed, e.g. sst"]
+  }
+}
+If no additional packages are needed, use empty arrays for both fields.`;
 }

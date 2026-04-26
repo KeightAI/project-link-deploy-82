@@ -20,8 +20,9 @@ import {
   createAssistantMessage,
   createSystemMessage,
 } from '@/types/chat';
-import { writeFile } from '@/services/repoApi';
+import { writeFile, readFile } from '@/services/repoApi';
 import { GitProvider } from '@/services/repoApi';
+import { RequiredPackages } from '@/types/chat';
 
 interface Project {
   id: string;
@@ -178,6 +179,7 @@ const ChatInterface = ({
           sstConfig: data.sstConfig,
           suggestedChanges: data.suggestedChanges,
           iamPolicy: data.iamPolicy,
+          requiredPackages: data.requiredPackages,
         }
       );
 
@@ -190,6 +192,7 @@ const ChatInterface = ({
           sstConfig: data.sstConfig,
           suggestedChanges: data.suggestedChanges,
           iamPolicy: data.iamPolicy,
+          requiredPackages: data.requiredPackages,
         },
         repoAnalysis: data.repoAnalysis || conversation.repoAnalysis,
         updatedAt: new Date(),
@@ -226,7 +229,7 @@ const ChatInterface = ({
     }
   };
 
-  const handlePushToRepo = async (sstConfig: string) => {
+  const handlePushToRepo = async (sstConfig: string, requiredPackages?: RequiredPackages) => {
     const { data: { session: freshSession } } = await supabase.auth.getSession();
     if (!freshSession?.provider_token) {
       throw new Error('No access token found. Please sign in again.');
@@ -235,13 +238,29 @@ const ChatInterface = ({
     const identifier = repoProvider === 'github'
       ? (selectedRepo.github_repo_url || '')
       : (selectedRepo.github_repo_id || '');
-    await writeFile(
-      repoProvider,
-      identifier,
-      sstConfig,
-      freshSession.provider_token,
-      selectedRepo.branch_name || 'main'
-    );
+    const token = freshSession.provider_token;
+    const branch = selectedRepo.branch_name || 'main';
+
+    // Update package.json if there are missing packages
+    const hasDeps = requiredPackages?.dependencies?.length;
+    const hasDevDeps = requiredPackages?.devDependencies?.length;
+    if (hasDeps || hasDevDeps) {
+      const raw = await readFile(repoProvider, identifier, 'package.json', token, branch);
+      if (raw) {
+        const pkg = JSON.parse(raw);
+        pkg.dependencies = pkg.dependencies || {};
+        pkg.devDependencies = pkg.devDependencies || {};
+        requiredPackages?.dependencies?.forEach((dep) => {
+          if (!pkg.dependencies[dep]) pkg.dependencies[dep] = '*';
+        });
+        requiredPackages?.devDependencies?.forEach((dep) => {
+          if (!pkg.devDependencies[dep]) pkg.devDependencies[dep] = '*';
+        });
+        await writeFile(repoProvider, identifier, JSON.stringify(pkg, null, 2), token, branch);
+      }
+    }
+
+    await writeFile(repoProvider, identifier, sstConfig, token, branch);
   };
 
   // Check if there's a latest message that's being generated

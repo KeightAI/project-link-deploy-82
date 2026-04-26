@@ -70,6 +70,24 @@ export const fetchUserRepositories = async (): Promise<GitHubRepo[]> => {
   }
 };
 
+export const readFileFromRepo = async (
+  repoUrl: string,
+  filePath: string,
+  token: string,
+  branch: string = 'main'
+): Promise<string | null> => {
+  const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+  if (!match) return null;
+  const [, owner, repo] = match;
+  const repoName = repo.replace(/\.git$/, '');
+  const apiBase = `https://api.github.com/repos/${owner}/${repoName}/contents/${filePath}`;
+  const headers = { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' };
+  const res = await fetch(`${apiBase}?ref=${branch}`, { headers });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return atob(data.content.replace(/\n/g, ''));
+};
+
 export const writeFileToRepo = async (
   repoUrl: string,
   content: string,
