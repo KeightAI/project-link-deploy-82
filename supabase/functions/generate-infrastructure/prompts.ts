@@ -32,13 +32,19 @@ Common missing packages by service:
 - DynamoDB (Dynamo): @aws-sdk/client-dynamodb, @aws-sdk/lib-dynamodb
 - SES (email): @aws-sdk/client-ses
 - SQS (Queue): @aws-sdk/client-sqs
-- SST Resource bindings: sst (must be in dependencies, not devDependencies)
+- SST itself: sst (add as devDependency — required for deployment)
 
-If any of these are missing from the repository's package.json dependencies, add this as Step 1 in suggestedChanges:
-"## Step 1: Install missing dependencies
+IMPORTANT: Always save packages to package.json so they are installed during deployment:
+- AWS SDK packages are runtime dependencies: npm install --save @aws-sdk/...
+- SST is a dev dependency: npm install --save-dev sst
+
+If any of these are missing from the repository's package.json, add this as Step 1 in suggestedChanges:
+"## Step 1: Install and save missing dependencies
 \`\`\`bash
-npm install <missing-packages>
-\`\`\`"
+npm install --save @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+npm install --save-dev sst
+\`\`\`
+This saves them to package.json so they are automatically installed during deployment."
 
 CRITICAL RULES:
 1. You ONLY help with AWS infrastructure and SST configuration
