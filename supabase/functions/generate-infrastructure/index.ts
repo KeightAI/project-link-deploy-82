@@ -147,10 +147,28 @@ serve(async (req) => {
     try {
       parsedContent = JSON.parse(generatedContent);
 
-      // Only sstConfig is truly required — fill in defaults for everything else
+      // Normalise alternate key names the model sometimes uses
       if (!parsedContent.sstConfig) {
-        console.error('Missing sstConfig. Got keys:', Object.keys(parsedContent));
-        console.error('Raw content:', generatedContent.slice(0, 500));
+        parsedContent.sstConfig =
+          parsedContent.sst_config ||
+          parsedContent.config ||
+          parsedContent.infrastructure ||
+          parsedContent.sst ||
+          parsedContent.sstconfig;
+      }
+      if (!parsedContent.suggestedChanges) {
+        parsedContent.suggestedChanges =
+          parsedContent.suggested_changes ||
+          parsedContent.implementationGuide ||
+          parsedContent.implementation_guide ||
+          parsedContent.guide || '';
+      }
+
+      console.log('Parsed keys:', Object.keys(parsedContent));
+
+      if (!parsedContent.sstConfig) {
+        console.error('Missing sstConfig after normalisation. Got keys:', Object.keys(parsedContent));
+        console.error('Raw content:', generatedContent.slice(0, 1000));
         throw new Error('Missing sstConfig in response');
       }
       if (!parsedContent.message) parsedContent.message = 'Infrastructure configuration generated.';
