@@ -242,6 +242,7 @@ const ChatInterface = ({
     const branch = selectedRepo.branch_name || 'main';
 
     // Update package.json if there are missing packages
+    console.log('requiredPackages from AI:', requiredPackages);
     const hasDeps = requiredPackages?.dependencies?.length;
     const hasDevDeps = requiredPackages?.devDependencies?.length;
     if (hasDeps || hasDevDeps) {
@@ -250,17 +251,24 @@ const ChatInterface = ({
         const pkg = JSON.parse(raw);
         pkg.dependencies = pkg.dependencies || {};
         pkg.devDependencies = pkg.devDependencies || {};
+        let pkgChanged = false;
         requiredPackages?.dependencies?.forEach((dep) => {
-          if (!pkg.dependencies[dep]) pkg.dependencies[dep] = '*';
+          if (!pkg.dependencies[dep]) { pkg.dependencies[dep] = '*'; pkgChanged = true; }
         });
         requiredPackages?.devDependencies?.forEach((dep) => {
-          if (!pkg.devDependencies[dep]) pkg.devDependencies[dep] = '*';
+          if (!pkg.devDependencies[dep]) { pkg.devDependencies[dep] = '*'; pkgChanged = true; }
         });
-        await writeFile(repoProvider, identifier, JSON.stringify(pkg, null, 2), token, branch, 'package.json');
+        if (pkgChanged) {
+          await writeFile(repoProvider, identifier, JSON.stringify(pkg, null, 2), token, branch, 'package.json');
+        }
       }
     }
 
-    await writeFile(repoProvider, identifier, sstConfig, token, branch);
+    // Only push sst.config.ts if content changed
+    const existingSst = await readFile(repoProvider, identifier, 'sst.config.ts', token, branch);
+    if (existingSst?.trim() !== sstConfig.trim()) {
+      await writeFile(repoProvider, identifier, sstConfig, token, branch);
+    }
   };
 
   // Check if there's a latest message that's being generated
