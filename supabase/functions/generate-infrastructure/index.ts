@@ -150,11 +150,16 @@ serve(async (req) => {
       // Only sstConfig is truly required — fill in defaults for everything else
       if (!parsedContent.sstConfig) {
         console.error('Missing sstConfig. Got keys:', Object.keys(parsedContent));
+        console.error('Raw content:', generatedContent.slice(0, 500));
         throw new Error('Missing sstConfig in response');
       }
       if (!parsedContent.message) parsedContent.message = 'Infrastructure configuration generated.';
       if (!parsedContent.suggestedChanges) parsedContent.suggestedChanges = '';
-      if (!parsedContent.requiredPackages) parsedContent.requiredPackages = { dependencies: [], devDependencies: [] };
+      // Normalise flat fields into requiredPackages shape for the client
+      parsedContent.requiredPackages = {
+        dependencies: parsedContent.requiredDependencies || [],
+        devDependencies: parsedContent.requiredDevDependencies || [],
+      };
     } catch (parseError: any) {
       console.error('Failed to parse AI engine response:', parseError);
       console.error('Raw content was:', generatedContent);
