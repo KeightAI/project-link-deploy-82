@@ -147,21 +147,23 @@ serve(async (req) => {
     try {
       parsedContent = JSON.parse(generatedContent);
 
-      // Validate required fields exist
-      if (!parsedContent.message || !parsedContent.sstConfig || !parsedContent.suggestedChanges) {
-        console.error('Missing fields. Got keys:', Object.keys(parsedContent));
-        throw new Error('Missing required fields in response');
+      // Only sstConfig is truly required — fill in defaults for everything else
+      if (!parsedContent.sstConfig) {
+        console.error('Missing sstConfig. Got keys:', Object.keys(parsedContent));
+        throw new Error('Missing sstConfig in response');
       }
+      if (!parsedContent.message) parsedContent.message = 'Infrastructure configuration generated.';
+      if (!parsedContent.suggestedChanges) parsedContent.suggestedChanges = '';
+      if (!parsedContent.requiredPackages) parsedContent.requiredPackages = { dependencies: [], devDependencies: [] };
     } catch (parseError: any) {
       console.error('Failed to parse AI engine response:', parseError);
       console.error('Raw content was:', generatedContent);
 
-      // Return user-friendly error
       parsedContent = {
-        message: "I encountered an error generating your infrastructure. The response format was unexpected.",
+        message: "I encountered an error generating your infrastructure. Please try again.",
         sstConfig: "// Error generating configuration",
-        suggestedChanges: `# Error\n\nFailed to parse AI response. Please try again.\n\nError: ${parseError.message || 'Unknown error'}`,
-        iamPolicy: "{}"
+        suggestedChanges: `# Error\n\nFailed to parse response. Please try again.\n\nError: ${parseError.message || 'Unknown error'}`,
+        requiredPackages: { dependencies: [], devDependencies: [] },
       };
     }
 
