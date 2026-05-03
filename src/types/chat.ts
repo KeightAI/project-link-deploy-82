@@ -32,6 +32,13 @@ export interface RepoAnalysis {
   buildCommand?: string;
   outputDir?: string;
   analyzedAt: Date;
+  // Source file scan results
+  awsSdkUsage?: string[];
+  envVars?: string[];
+  hasApiRoutes?: boolean;
+  dbLibraries?: string[];
+  externalServices?: string[];
+  sourceFilesScanned?: number;
 }
 
 export interface ConversationState {

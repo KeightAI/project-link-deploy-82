@@ -42,38 +42,42 @@ serve(async (req) => {
     // Build repo context with detailed analysis
     let repoContext = `- Repository: ${repoName} (${repoUrl})`;
     if (repoAnalysis) {
-      // Framework
-      if (repoAnalysis.framework) {
-        repoContext += `\n- Framework: ${repoAnalysis.framework}`;
-      }
+      if (repoAnalysis.framework) repoContext += `\n- Framework: ${repoAnalysis.framework}`;
+      if (repoAnalysis.buildTool) repoContext += `\n- Build Tool: ${repoAnalysis.buildTool}`;
+      if (repoAnalysis.buildCommand) repoContext += `\n- Build Command: ${repoAnalysis.buildCommand}`;
 
-      // Build tool
-      if (repoAnalysis.buildTool) {
-        repoContext += `\n- Build Tool: ${repoAnalysis.buildTool}`;
-      }
-
-      // Build command
-      if (repoAnalysis.buildCommand) {
-        repoContext += `\n- Build Command: ${repoAnalysis.buildCommand}`;
-      }
-
-      // Output directory
-      if (repoAnalysis.outputDir) {
-        repoContext += `\n- Output Directory: ${repoAnalysis.outputDir}`;
-      }
-
-      // Dependencies (limit to top 15 to avoid overwhelming the prompt)
       if (repoAnalysis.dependencies && repoAnalysis.dependencies.length > 0) {
         const topDeps = repoAnalysis.dependencies.slice(0, 15);
-        repoContext += `\n- Key Dependencies (${topDeps.length}/${repoAnalysis.dependencies.length}): ${topDeps.join(', ')}`;
-        if (repoAnalysis.dependencies.length > 15) {
-          repoContext += ` ...and ${repoAnalysis.dependencies.length - 15} more`;
-        }
+        repoContext += `\n- package.json dependencies: ${topDeps.join(', ')}${repoAnalysis.dependencies.length > 15 ? ` (+${repoAnalysis.dependencies.length - 15} more)` : ''}`;
       }
 
-      // Analysis timestamp
-      if (repoAnalysis.analyzedAt) {
-        repoContext += `\n- Last analyzed: ${repoAnalysis.analyzedAt}`;
+      // Source file scan results — these are the most valuable signals
+      if (repoAnalysis.awsSdkUsage && repoAnalysis.awsSdkUsage.length > 0) {
+        repoContext += `\n- AWS SDK imports found in source: ${repoAnalysis.awsSdkUsage.join(', ')}`;
+        repoContext += `\n  → MUST include corresponding sst.aws.* resources for these`;
+      }
+
+      if (repoAnalysis.envVars && repoAnalysis.envVars.length > 0) {
+        repoContext += `\n- Environment variables used in code: ${repoAnalysis.envVars.join(', ')}`;
+        repoContext += `\n  → Wire these into sst.aws.Nextjs environment: {} block`;
+      }
+
+      if (repoAnalysis.hasApiRoutes) {
+        repoContext += `\n- Has API routes: yes (server-side code detected — use sst.aws.Nextjs, not static)`;
+      }
+
+      if (repoAnalysis.dbLibraries && repoAnalysis.dbLibraries.length > 0) {
+        repoContext += `\n- Database libraries: ${repoAnalysis.dbLibraries.join(', ')}`;
+        repoContext += `\n  → Consider sst.aws.Postgres or sst.aws.Dynamo depending on library`;
+      }
+
+      if (repoAnalysis.externalServices && repoAnalysis.externalServices.length > 0) {
+        repoContext += `\n- External service libraries: ${repoAnalysis.externalServices.join(', ')}`;
+        repoContext += `\n  → Ensure their API keys are included in environment: {} and listed in requiredDependencies`;
+      }
+
+      if (repoAnalysis.sourceFilesScanned) {
+        repoContext += `\n- Source files scanned: ${repoAnalysis.sourceFilesScanned}`;
       }
     }
 
